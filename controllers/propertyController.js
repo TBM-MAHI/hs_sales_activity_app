@@ -8,7 +8,7 @@ const getProperties = async (req, res) => {
         const objectType = req.query.objectType || 'contacts';
         // Get access token
        // const accessToken = await getAccessToken(req);
-        const accessToken = 'pat-na1-b7f868e7-ba32-4aac-82e4-83ef38db521e';
+        const accessToken = process.env.TEMP_TEST_API_KEY; // Use API key for testing if OAuth is not set up
         if (!accessToken) {
             return res.status(401).json({
                 error: 'No access token available. Please authenticate first.'
