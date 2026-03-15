@@ -1,0 +1,73 @@
+
+ [
+  {
+    "callbackId": "ap-51107326-2356125360442-2-0",
+    "origin": {
+      "portalId": 51107326,
+      "userId": null,
+      "actionDefinitionId": 256332086,
+      "actionDefinitionVersion": 2,
+      "actionExecutionIndexIdentifier": {
+        "enrollmentId": 2356125360442,
+        "actionExecutionIndex": 0
+      },
+      "extensionDefinitionVersionId": 2,
+      "extensionDefinitionId": 256332086
+    },
+    "context": {
+      "workflowId": 1781203208,
+      "actionId": 2,
+      "actionExecutionIndexIdentifier": {
+        "enrollmentId": 2356125360442,
+        "actionExecutionIndex": 0
+      },
+      "source": "WORKFLOWS"
+    },
+    "object": {
+      "objectId": 204503141523,
+      "objectType": "CONTACT"
+    },
+    "fields": {
+      "activity_timeline": "last",
+      "target_property": "Halligan (Sample Contact)"
+    },
+    "inputFields": {
+      "activity_timeline": "last",
+      "target_property": "Halligan (Sample Contact)"
+    },
+    "typedInputs": {
+      "activity_timeline": {
+        "value": "last",
+        "type": "STRING"
+      },
+      "target_property": {
+        "value": "Halligan (Sample Contact)",
+        "type": "STRING"
+      }
+    }
+  },
+  {
+    "updatedAt": "2024-09-12T14:12:43.357Z",
+    "createdAt": "2019-08-06T02:41:09.313Z",
+    "name": "annualrevenue",
+    "label": "Annual Revenue",
+    "type": "string",
+    "fieldType": "text",
+    "description": "Annual company revenue",
+    "groupName": "contactinformation",
+    "options": [],
+    "displayOrder": 22,
+    "calculated": false,
+    "externalOptions": false,
+    "hasUniqueValue": false,
+    "hidden": false,
+    "hubspotDefined": true,
+    "modificationMetadata": {
+      "archivable": false,
+      "readOnlyDefinition": false,
+      "readOnlyValue": false
+    },
+    "formField": true,
+    "dataSensitivity": "non_sensitive"
+  }
+]
