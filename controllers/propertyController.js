@@ -42,6 +42,7 @@ const getProperties = async (req, res) => {
         logger.error(`Error fetching properties: ${error.message}`);
         if (error.response) {
             // HubSpot API error
+            console.log(error.response.data);
             return res.status(error.response.status).json({
                 error: error.response.data.message || 'HubSpot API error'
             });
