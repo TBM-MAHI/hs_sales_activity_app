@@ -19,8 +19,10 @@ api_Router.post('/test', async (req, res) => {
 
 
 // propertyRoute.js
-api_Router.get('/getallprops', async (req, res) => {  
-    console.log("lcalling route-> /getallprops endpoint");
+api_Router.post('/getallprops', async (req, res) => {  
+    console.log("calling route-> property/getallprops");
+    console.log( '\tRequest body:', req.body);
+    console.log('\tUser-Agent:', req.headers);
     await propertyController.getProperties(req, res);
 });
 
