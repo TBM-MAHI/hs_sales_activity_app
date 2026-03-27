@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const hubspotRoutes = require('./routes/hubspotRoutes');
-const propertyRoutes = require('./routes/propertyRoute');
+const activityRoutes = require('./routes/activityRoute');
 let { ConnectDB } = require("./utils/mongo.connection");
 const session = require('express-session');
 const logger = require('./utils/logger'); // Add logger
@@ -21,7 +21,7 @@ app.use(session({
 }));
 
 app.use('/app', hubspotRoutes);
-app.use('/property', propertyRoutes);
+app.use('/activity', activityRoutes);
 
 async function loadDatabaseConnection() {
    // await ConnectDB();
