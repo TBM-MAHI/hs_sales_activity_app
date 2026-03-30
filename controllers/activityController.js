@@ -19,7 +19,7 @@ async function handleActionInput(req, res) {
     return res.status(400).json({ updateSuccess: false, errorMessage: 'Missing target_property' });
   }
   return res.status(200).json({ 
-    updateSuccess: true, errorMessage: null, message : 'Validation passed. Workflow logic would execute here.' 
+    updateSuccess: true, errorMessage: null, message : 'Validation passed' 
   });
 
  /* try {

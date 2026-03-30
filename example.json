@@ -1,53 +1,34 @@
-
  [
   {
-    "callbackId": "ap-51107326-2356125360442-2-0",
+    "callbackId": "ap-51107326-2417775978772-1-0",
     "origin": {
       "portalId": 51107326,
       "userId": null,
       "actionDefinitionId": 256332086,
-      "actionDefinitionVersion": 2,
+      "actionDefinitionVersion": 5,
       "actionExecutionIndexIdentifier": {
-        "enrollmentId": 2356125360442,
+        "enrollmentId": 2417775978772,
         "actionExecutionIndex": 0
       },
-      "extensionDefinitionVersionId": 2,
+      "extensionDefinitionVersionId": 5,
       "extensionDefinitionId": 256332086
     },
     "context": {
-      "workflowId": 1781203208,
-      "actionId": 2,
+      "workflowId": 1791344961,
+      "actionId": 1,
       "actionExecutionIndexIdentifier": {
-        "enrollmentId": 2356125360442,
+        "enrollmentId": 2417775978772,
         "actionExecutionIndex": 0
       },
       "source": "WORKFLOWS"
     },
-    "object": {
-      "objectId": 204503141523,
-      "objectType": "CONTACT"
-    },
-    "fields": {
-      "activity_timeline": "last",
-      "target_property": "Halligan (Sample Contact)"
-    },
-    "inputFields": {
-      "activity_timeline": "last",
-      "target_property": "Halligan (Sample Contact)"
-    },
+    "object": { "objectId": 204513334098, "objectType": "CONTACT" },
+    "fields": { "activity_timeline": "last" },
+    "inputFields": { "activity_timeline": "last" },
     "typedInputs": {
-      "activity_timeline": {
-        "value": "last",
-        "type": "STRING"
-      },
-      "target_property": {
-        "value": "Halligan (Sample Contact)",
-        "type": "STRING"
-      }
+      "activity_timeline": { "value": "last", "type": "STRING" }
     }
   },
-
-  
   {
     "updatedAt": "2024-09-12T14:12:43.357Z",
     "createdAt": "2019-08-06T02:41:09.313Z",

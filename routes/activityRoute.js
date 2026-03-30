@@ -22,15 +22,17 @@ api_Router.post('/test', async (req, res) => {
 
 // propertyRoute.js
 api_Router.post('/getallprops', async (req, res) => {  
-    console.log("calling route-> property/getallprops");
+    console.log("calling route-> activity/getallprops");
     console.log( '\tRequest body:', req.body);
     console.log('\tUser-Agent:', req.headers['user-agent']);
     await propertyController.getProperties(req, res);
 });
+
 //hubspot activity route
 api_Router.post('/getactivityresult', async (req, res) => {
   logger.info('calling route -> activity/getactivityresult');
-    console.log( '\tRequest body:', req.body);
+  console.log( '\tRequest body:')
+  console.log( req.body);
   await activityController.handleActionInput(req, res);
 });
 module.exports = api_Router;
