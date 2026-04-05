@@ -1,34 +1,41 @@
  [
-  {
-    "callbackId": "ap-51107326-2417775978772-1-0",
-    "origin": {
-      "portalId": 51107326,
-      "userId": null,
-      "actionDefinitionId": 256332086,
-      "actionDefinitionVersion": 5,
-      "actionExecutionIndexIdentifier": {
-        "enrollmentId": 2417775978772,
-        "actionExecutionIndex": 0
-      },
-      "extensionDefinitionVersionId": 5,
-      "extensionDefinitionId": 256332086
-    },
-    "context": {
-      "workflowId": 1791344961,
-      "actionId": 1,
-      "actionExecutionIndexIdentifier": {
-        "enrollmentId": 2417775978772,
-        "actionExecutionIndex": 0
-      },
-      "source": "WORKFLOWS"
-    },
-    "object": { "objectId": 204513334098, "objectType": "CONTACT" },
-    "fields": { "activity_timeline": "last" },
-    "inputFields": { "activity_timeline": "last" },
-    "typedInputs": {
-      "activity_timeline": { "value": "last", "type": "STRING" }
-    }
-  },
+ {
+   "callbackId": "ap-51107326-2422018338048-1-0",
+   "origin": {
+     "portalId": 51107326,
+     "userId": null,
+     "actionDefinitionId": 256332086,
+     "actionDefinitionVersion": 6,
+     "actionExecutionIndexIdentifier": {
+       "enrollmentId": 2422018338048,
+       "actionExecutionIndex": 0
+     },
+     "extensionDefinitionVersionId": 6,
+     "extensionDefinitionId": 256332086
+   },
+   "context": {
+     "workflowId": 1791344961,
+     "actionId": 1,
+     "actionExecutionIndexIdentifier": {
+       "enrollmentId": 2422018338048,
+       "actionExecutionIndex": 0
+     },
+     "source": "WORKFLOWS"
+   },
+   "object": { "objectId": 204503141523, "objectType": "CONTACT" },
+   "fields": {
+     "activity_timeline": "last",
+     "target_property_2": "last_activity_ty"
+   },
+   "inputFields": {
+     "activity_timeline": "last",
+     "target_property_2": "last_activity_ty"
+   },
+   "typedInputs": {
+     "activity_timeline": { "value": "last", "type": "STRING" },
+     "target_property_2": { "value": "last_activity_ty", "type": "STRING" }
+   }
+ },
   {
     "updatedAt": "2024-09-12T14:12:43.357Z",
     "createdAt": "2019-08-06T02:41:09.313Z",

@@ -3,7 +3,22 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 
 const HUBSPOT_BASE = 'https://api.hubapi.com/crm/v3';
-const ACCESS_TOKEN = 'YOUR_HARDCODED_TOKEN';
+const ACCESS_TOKEN = 'pat-na2-9f9333eb-c3fd-4b89-9187-273d0d6a79d8';
+const headers = { Authorization: `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' };
+
+// Engagement types and their labels
+const ENGAGEMENT_TYPES = ['calls', 'emails', 'meetings', 'notes', 'tasks'];
+const TYPE_LABELS = {
+  calls: 'Call',
+  emails_sent: 'Email Sent',
+  emails_received: 'Email Received',
+  meetings: 'Meeting',
+  notes: 'Note',
+  tasks: 'Task',
+};
+
+// Rate limit: 5 req/sec - use 250ms delay for safety
+const RATE_LIMIT_DELAY = 250;
 
 // Cache (5 min TTL)
 const cache = new Map();
@@ -18,18 +33,64 @@ function getCached(key) {
 function setCache(key, data) {
   cache.set(key, { expiresAt: Date.now() + CACHE_TTL, data });
 }
+/**
+ * Recursively fetch all emails with pagination and split by direction
+ */
+async function fetchAllEmailsPaginated(assocType, objectId, after = undefined, accumulated = { sent: [], received: [] }) {
+  const response = await hubspotPost(
+    `${HUBSPOT_BASE}/objects/emails/search`,
+    {
+      limit: 200,
+      after,
+      properties: ['hs_createdate', 'hs_email_direction','hs_email_subject'],
+      filters: [
+        {
+          propertyName: `associations.${assocType}`,
+          operator: 'EQ',
+          value: objectId,
+        },
+      ],
+      sorts: [
+        { propertyName: 'hs_createdate', direction: 'DESCENDING' }
+      ],
+    }
+  );
+  const results = response.results || [];
+  console.log(results);
+  // Categorize as we go
+  for (const email of results) {
+    const direction = email.properties?.hs_email_direction;
+    if (direction === 'EMAIL') {
+      accumulated.sent.push(email);
+    } else if (direction === 'INCOMING_EMAIL') {
+      accumulated.received.push(email);
+    }
+  }
 
-// HubSpot API helpers
+  console.log(`Fetched EMAILS: ${results.length} emails (running total: ${accumulated.sent.length} sent, ${accumulated.received.length} received)`);
+
+  // Check for next page
+  const nextAfter = response.paging?.next?.after;
+
+  if (nextAfter) {
+    await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY)); // Rate limit
+    return fetchAllEmailsPaginated(assocType, objectId, nextAfter, accumulated); // Recurse
+  }
+  return accumulated; // Done - return final result
+}
+/*  
+   HubSpot API helpers
+*/
+
 async function hubspotGet(url, params = {}) {
   for (let attempt = 0; attempt <= 4; attempt++) {
+    console.log(`GET URL ${url}`);
     try {
-      const res = await axios.get(url, {
-        headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
-        params,
-        timeout: 20000,
-      });
+      const res = await axios.get(url, { headers, params, timeout: 20000 });
+      console.log(res.data.properties);
       return res.data;
     } catch (err) {
+      //console.log(err.response);
       if (err.response?.status === 429 && attempt < 4) {
         await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
         continue;
@@ -40,11 +101,22 @@ async function hubspotGet(url, params = {}) {
 }
 
 async function hubspotPost(url, data) {
-  const res = await axios.post(url, data, {
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
-    timeout: 20000,
-  });
-  return res.data;
+  for (let attempt = 0; attempt <= 4; attempt++) {
+    console.log(`POST -> ${url}`);
+    try {
+      const res = await axios.post(url, data, { headers, timeout: 20000 });
+      if ( url.includes('/batch/update') ) 
+        console.log(res.data);
+      return res.data;
+    } catch (err) {
+      console.log(err.response);
+      if (err.response?.status === 429 && attempt < 4) {
+        await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw { status: err.response?.status || 500, message: err.response?.data?.message || err.message };
+    }
+  }
 }
 
 function normalizeType(type) {
@@ -54,49 +126,86 @@ function normalizeType(type) {
   throw { status: 400, message: `Unsupported objectType: ${type}` };
 }
 
-// Fetch all activities (cached)
-async function fetchActivities(objectType, objectId) {
+// ─────────────────────────────────────────────────────────────
+// FETCH ALL ENGAGEMENTS (searches each type's API)
+// ─────────────────────────────────────────────────────────────
+
+async function fetchAllEngagements(objectType, objectId, whichFunction) {
   const normType = normalizeType(objectType);
-  const cacheKey = `${normType}:${objectId}`;
-  
+  const cacheKey = `engagements:${normType}:${objectId}`;
   const cached = getCached(cacheKey);
-  if (cached) return cached;
-
-  // Get activity IDs
-  const activityIds = [];
-  let after;
-  do {
-    const data = await hubspotGet(
-      `${HUBSPOT_BASE}/objects/${normType}/${objectId}/associations/activities`,
-      { limit: 100, after }
-    );
-    data.results?.forEach(r => r.id && activityIds.push(r.id));
-    after = data.paging?.next?.after;
-  } while (after);
-
-  // Fetch details in chunks
-  const activities = [];
-  for (let i = 0; i < activityIds.length; i += 20) {
-    const results = await Promise.all(
-      activityIds.slice(i, i + 20).map(async (id) => {
-        try {
-          const data = await hubspotGet(`${HUBSPOT_BASE}/objects/activities/${id}`, {
-            properties: 'hs_activity_type,hs_timestamp',
-          });
-          const type = data.properties?.hs_activity_type?.toUpperCase() || null;
-          const ts = data.properties?.hs_timestamp;
-          const timestamp = ts ? new Date(Number(ts) || ts).toISOString() : null;
-          return type && timestamp ? { type, timestamp } : null;
-        } catch {
-          return null;
-        }
-      })
-    );
-    results.filter(Boolean).forEach(a => activities.push(a));
+  if (cached) {
+    console.log(`Cache hit for ${cacheKey}`);
+    return cached;
   }
+  // Association filter uses singular object form
+  const assocType = normType === 'contacts' ? 'contact' : 'company';
+  const engagement_results = {};
+  let engagement_count = {};
 
-  setCache(cacheKey, activities);
-  return activities;
+  for (const engagementType of ENGAGEMENT_TYPES) {
+    try {
+       if (engagementType === 'emails') {
+        // Use recursive pagination for emails
+        const emails = await fetchAllEmailsPaginated(assocType, objectId);
+        
+        engagement_results['emails_sent'] = emails.sent;
+        engagement_results['emails_received'] = emails.received;
+        engagement_count['emails_sent'] = emails.sent.length;
+        engagement_count['emails_received'] = emails.received.length;
+
+        console.log(`Total: ${emails.sent.length} emails_sent, ${emails.received.length} emails_received`);
+      } else {
+        const response = await hubspotPost(
+          `${HUBSPOT_BASE}/objects/${engagementType}/search`,
+          {
+            limit: 200,
+            properties: ['hs_createdate'],
+            filters: [
+              {
+                propertyName: `associations.${assocType}`,
+                operator: 'EQ',
+                value: objectId,
+              },
+            ],
+            sorts: [
+              { propertyName: 'hs_createdate', direction: 'DESCENDING' }
+            ],
+          }
+        );
+        engagement_results[engagementType] = response.results || [];
+        engagement_count[engagementType] = response.total || 0;
+        console.log(`Fetched ${response.total} ${engagementType}`);
+        // console.log(engagement_results[engagementType]);
+      }
+      console.log("🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉");
+    } catch (err) {
+      console.log(`Failed to fetch ${engagementType}: ${err.message}`);
+      engagement_results[engagementType] = [];
+    }
+    // Rate limit delay
+    await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY));
+  }
+  setCache(cacheKey, engagement_results);
+  
+  if (whichFunction=='getLastActivityType') 
+    return engagement_results
+  else if (whichFunction == 'MostFrequentActivity')
+    return engagement_count;
+  
+  return engagement_results;
+}
+// ─────────────────────────────────────────────────────────────
+// HELPER: Parse timestamp from engagement record
+// ─────────────────────────────────────────────────────────────
+
+function parseTimestamp(record) {
+  const tsRaw =record.properties.hs_createdate;
+  if (!tsRaw) 
+    return null;
+  const ts = new Date(Number(tsRaw) || tsRaw);
+    //console.log("logging ts from parseTimestamp",ts);
+  return isNaN(ts.getTime()) ? null : ts;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -104,45 +213,40 @@ async function fetchActivities(objectType, objectId) {
 // ─────────────────────────────────────────────────────────────
 
 async function getLastActivityType(objectId, objectType) {
-  const activities = await fetchActivities(objectType, objectId);
-  if (!activities.length) return null;
-  
-  const sorted = activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  return sorted[0].type;
-}
+  const engagements = await fetchAllEngagements(objectType, objectId, 'LastActivityType');
+  //console.log(engagements);
+  /* engagements = {
+                      meetings: [],
+                      notes: [],
+                      calls: [{ properties: { hs_timestamp: '2024-06-01T12:00:00Z' } }],
+                      emails: [{ properties: { hs_timestamp: '2024-06-02T12:00:00Z' } }],
+                      tasks: []
+  }
+   */
+  let latest = null;
 
-async function getFirstActivityType(objectId, objectType) {
-  const activities = await fetchActivities(objectType, objectId);
-  if (!activities.length) return null;
-  
-  const sorted = activities.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  return sorted[0].type;
+  for (const [engagementType, records] of Object.entries(engagements)) {
+    if (!records.length) continue; // Skip empty arrays
+    
+    const ts = parseTimestamp(records[0]); // Only check first record (already sorted)
+    if (!ts) continue;
+    if (!latest || ts > latest.timestamp) {
+      latest = { type: TYPE_LABELS[engagementType], timestamp: ts };
+      console.log(latest);
+    }
+  }
+  return latest?.type || null;
 }
 
 async function getMostFrequentActivityType(objectId, objectType) {
-  const activities = await fetchActivities(objectType, objectId);
-  if (!activities.length) return null;
+  const engagementsCount = await fetchAllEngagements(objectType, objectId,'MostFrequentActivity');
+  console.log("in most frequent->",engagementsCount);  
 
-  const counts = new Map();
-  const latestByType = new Map();
-
-  activities.forEach(({ type, timestamp }) => {
-    counts.set(type, (counts.get(type) || 0) + 1);
-    const ts = new Date(timestamp);
-    if (!latestByType.get(type) || ts > latestByType.get(type)) {
-      latestByType.set(type, ts);
-    }
-  });
-
-  let result = null, maxCount = 0;
-  counts.forEach((count, type) => {
-    if (count > maxCount || (count === maxCount && latestByType.get(type) > latestByType.get(result))) {
-      result = type;
-      maxCount = count;
-    }
-  });
-
-  return result;
+  const mostFrequentActivityType = Object.entries(engagementsCount)
+  .reduce(
+    (max, [type, count]) => count > max[1] ? [type, count] : max)[0];
+    console.log("\t mostFrequentActivityType:", TYPE_LABELS[mostFrequentActivityType]);
+  return mostFrequentActivityType;
 }
 
 async function verifyObjectExists(objectType, objectId) {
@@ -154,10 +258,7 @@ async function updateProperty(objectType, objectId, propertyName, value) {
     inputs: [
       { 
         id: String(objectId), 
-        properties: { 
-          [propertyName]: value 
-
-        } 
+        properties: { [propertyName]: value } 
       }
     ],
   });
@@ -165,7 +266,6 @@ async function updateProperty(objectType, objectId, propertyName, value) {
 
 module.exports = {
   getLastActivityType,
-  getFirstActivityType,
   getMostFrequentActivityType,
   verifyObjectExists,
   updateProperty,

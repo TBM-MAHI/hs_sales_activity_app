@@ -31,8 +31,8 @@ api_Router.post('/getallprops', async (req, res) => {
 //hubspot activity route
 api_Router.post('/getactivityresult', async (req, res) => {
   logger.info('calling route -> activity/getactivityresult');
-  console.log( '\tRequest body:')
-  console.log( req.body);
+  console.log( '\tRequest body:\n')
+  //Console.log( req.body);
   await activityController.handleActionInput(req, res);
 });
 module.exports = api_Router;
