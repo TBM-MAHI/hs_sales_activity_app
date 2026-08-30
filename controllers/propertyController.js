@@ -9,6 +9,7 @@ const getProperties = async (req, res) => {
         // Get access token
        // const accessToken = await getAccessToken(req);
         const accessToken = process.env.TEMP_TEST_API_KEY; // Use API key for testing if OAuth is not set up
+        console.log(accessToken);
         if (!accessToken) {
             return res.status(401).json({
                 error: 'No access token available. Please authenticate first.'

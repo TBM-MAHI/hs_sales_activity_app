@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const hubspotRoutes = require('./routes/hubspotRoutes');
+const hubspot_oAuthRoutes = require('./routes/oAuthRoutes');
 const activityRoutes = require('./routes/activityRoute');
 let { ConnectDB } = require("./utils/mongo.connection");
 const session = require('express-session');
@@ -20,7 +20,7 @@ app.use(session({
     saveUninitialized: true
 }));
 
-app.use('/app', hubspotRoutes);
+app.use('/oauth', hubspot_oAuthRoutes);
 app.use('/activity', activityRoutes);
 
 async function loadDatabaseConnection() {
