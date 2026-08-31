@@ -1,6 +1,5 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
-const { getAccessToken } = require('./hs_oauthController');
 
 const getProperties = async (req, res) => {
     try {
@@ -25,18 +24,20 @@ const getProperties = async (req, res) => {
         const response = await axios.get(apiUrl, { headers });
 
         // Format the response
-        const properties = response.data.results || [];
-       // console.log(properties[1]);
-        const text_prop_options = properties.filter(
-            property => property.fieldType === 'text').map(property => ({
+        const properties = (response.data.results || []).filter(
+            property => property.fieldType === 'text' && !property.hubspotDefined
+        );
+        console.log(properties);
+        const custom_text_properties = properties.map(property => ({
             label: property.label,
             value: property.name
         }));
 
-        logger.info(`Fetched ${text_prop_options.length} text properties for ${objectType}`);
+       
+        logger.info(`Fetched ${custom_text_properties.length} text properties for ${objectType}`);
 
         return res.status(200).json({
-            options: text_prop_options
+            options: custom_text_properties
         });
 
     } catch (error) {
