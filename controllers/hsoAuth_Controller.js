@@ -1,5 +1,6 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { createAllProperties } = require('./propertyController');
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -13,7 +14,9 @@ const SCOPES_LIST = [
   'crm.objects.companies.read',
   'crm.objects.companies.write',
   'crm.schemas.contacts.read',
+  'crm.schemas.contacts.write',
   'crm.schemas.companies.read',
+  'crm.schemas.companies.write',
   // Add new scopes here
 ];
 
@@ -103,6 +106,15 @@ async function oauthCallback(req, res) {
   }
 
   const { access_token, refresh_token, expires_in } = tokens;
+
+  // Create the custom property group + properties for this portal.
+  // Never throws — a provisioning problem must not fail the install.
+  const { ok, errors } = await createAllProperties(access_token);
+  logWithDetails(
+    ok ? 'info' : 'error',
+    ok ? 'Custom properties created successfully' : `Custom property setup failed: ${errors.join('; ')}`,
+    req
+  );
 
   // Get account info
   const accInfo = await getAccountInfo(access_token);

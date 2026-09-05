@@ -4,8 +4,6 @@ let api_Router = express.Router();
 let propertyController = require('../controllers/propertyController');
 let activityController = require('../controllers/activityController');
 
-let c = 0;
-
 const randomDelay = () => {
     const min = 5000;
     const max = 10000;
@@ -35,4 +33,6 @@ api_Router.post('/getactivityresult', async (req, res) => {
   //Console.log( req.body);
   await activityController.handleActionInput(req, res);
 });
+
+
 module.exports = api_Router;
