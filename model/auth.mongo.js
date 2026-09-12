@@ -3,7 +3,8 @@ const mongoose = require("mongoose");
 let authSchema = new mongoose.Schema({
     portalID: {
         type: Number,
-        required: true
+        required: true,
+        unique : true
     },
     refresh_token: {
         type: String,
@@ -17,8 +18,8 @@ let authSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
-    hub_domain: {
-        type: String,
+    scopes: {
+        type: [String],
         required: false
     },
     token_timestamp: {
@@ -28,4 +29,4 @@ let authSchema = new mongoose.Schema({
 }, { timestamps: true }
 );
 
-exports.authModel = mongoose.model('account_Auth', authSchema);
+exports.authModel = mongoose.model('account_Auth_info', authSchema);

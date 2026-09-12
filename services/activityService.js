@@ -3,8 +3,13 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 
 const HUBSPOT_BASE = 'https://api.hubapi.com/crm/v3';
-const ACCESS_TOKEN = 'pat-na2-9f9333eb-c3fd-4b89-9187-273d0d6a79d8';
-const headers = { Authorization: `Bearer ${ACCESS_TOKEN}`, 'Content-Type': 'application/json' };
+
+// The token is no longer baked in: every call is made with the OAuth token of
+// the portal the request came from, resolved (and refreshed) by tokenService.
+const authHeaders = accessToken => ({
+  Authorization: `Bearer ${accessToken}`,
+  'Content-Type': 'application/json'
+});
 
 // Engagement types and their labels
 const ENGAGEMENT_TYPES = ['calls', 'emails', 'meetings', 'notes', 'tasks'];
@@ -36,9 +41,10 @@ function setCache(key, data) {
 /**
  * Recursively fetch all emails with pagination and split by direction
  */
-async function fetchAllEmailsPaginated(assocType, objectId, after = undefined, accumulated = { sent: [], received: [] }) {
+async function fetchAllEmailsPaginated(assocType, objectId, accessToken, after = undefined, accumulated = { sent: [], received: [] }) {
   const response = await hubspotPost(
     `${HUBSPOT_BASE}/objects/emails/search`,
+    accessToken,
     {
       limit: 200,
       after,
@@ -74,7 +80,7 @@ async function fetchAllEmailsPaginated(assocType, objectId, after = undefined, a
 
   if (nextAfter) {
     await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY)); // Rate limit
-    return fetchAllEmailsPaginated(assocType, objectId, nextAfter, accumulated); // Recurse
+    return fetchAllEmailsPaginated(assocType, objectId, accessToken, nextAfter, accumulated); // Recurse
   }
   return accumulated; // Done - return final result
 }
@@ -82,11 +88,11 @@ async function fetchAllEmailsPaginated(assocType, objectId, after = undefined, a
    HubSpot API helpers
 */
 
-async function hubspotGet(url, params = {}) {
+async function hubspotGet(url, accessToken, params = {}) {
   for (let attempt = 0; attempt <= 4; attempt++) {
     console.log(`GET URL ${url}`);
     try {
-      const res = await axios.get(url, { headers, params, timeout: 20000 });
+      const res = await axios.get(url, { headers: authHeaders(accessToken), params, timeout: 20000 });
       console.log(res.data.properties);
       return res.data;
     } catch (err) {
@@ -100,11 +106,11 @@ async function hubspotGet(url, params = {}) {
   }
 }
 
-async function hubspotPost(url, data) {
+async function hubspotPost(url, accessToken, data) {
   for (let attempt = 0; attempt <= 4; attempt++) {
     console.log(`POST -> ${url}`);
     try {
-      const res = await axios.post(url, data, { headers, timeout: 20000 });
+      const res = await axios.post(url, data, { headers: authHeaders(accessToken), timeout: 20000 });
       if ( url.includes('/batch/update') ) 
         console.log(res.data);
       return res.data;
@@ -130,9 +136,10 @@ function normalizeType(type) {
 // FETCH ALL ENGAGEMENTS (searches each type's API)
 // ─────────────────────────────────────────────────────────────
 
-async function fetchAllEngagements(objectType, objectId, whichFunction) {
+async function fetchAllEngagements(objectType, objectId, whichFunction, { portalId, accessToken }) {
   const normType = normalizeType(objectType);
-  const cacheKey = `engagements:${normType}:${objectId}`;
+  // The portal is part of the key - two portals must never share cached records.
+  const cacheKey = `engagements:${portalId}:${normType}:${objectId}`;
   const cached = getCached(cacheKey);
   if (cached) {
     console.log(`Cache hit for ${cacheKey}`);
@@ -147,7 +154,7 @@ async function fetchAllEngagements(objectType, objectId, whichFunction) {
     try {
        if (engagementType === 'emails') {
         // Use recursive pagination for emails
-        const emails = await fetchAllEmailsPaginated(assocType, objectId);
+        const emails = await fetchAllEmailsPaginated(assocType, objectId, accessToken);
         
         engagement_results['emails_sent'] = emails.sent;
         engagement_results['emails_received'] = emails.received;
@@ -158,6 +165,7 @@ async function fetchAllEngagements(objectType, objectId, whichFunction) {
       } else {
         const response = await hubspotPost(
           `${HUBSPOT_BASE}/objects/${engagementType}/search`,
+          accessToken,
           {
             limit: 200,
             properties: ['hs_createdate'],
@@ -212,8 +220,8 @@ function parseTimestamp(record) {
 // EXPORTED FUNCTIONS
 // ─────────────────────────────────────────────────────────────
 
-async function getLastActivityType(objectId, objectType) {
-  const engagements = await fetchAllEngagements(objectType, objectId, 'LastActivityType');
+async function getLastActivityType(objectId, objectType, ctx) {
+  const engagements = await fetchAllEngagements(objectType, objectId, 'LastActivityType', ctx);
   //console.log(engagements);
   /* engagements = {
                       meetings: [],
@@ -238,8 +246,8 @@ async function getLastActivityType(objectId, objectType) {
   return latest?.type || null;
 }
 
-async function getMostFrequentActivityType(objectId, objectType) {
-  const engagementsCount = await fetchAllEngagements(objectType, objectId,'MostFrequentActivity');
+async function getMostFrequentActivityType(objectId, objectType, ctx) {
+  const engagementsCount = await fetchAllEngagements(objectType, objectId, 'MostFrequentActivity', ctx);
   console.log("in most frequent->",engagementsCount);  
 
   const mostFrequentActivityType = Object.entries(engagementsCount)
@@ -249,12 +257,12 @@ async function getMostFrequentActivityType(objectId, objectType) {
   return mostFrequentActivityType;
 }
 
-async function verifyObjectExists(objectType, objectId) {
-  await hubspotGet(`${HUBSPOT_BASE}/objects/${normalizeType(objectType)}/${objectId}`);
+async function verifyObjectExists(objectType, objectId, { accessToken }) {
+  await hubspotGet(`${HUBSPOT_BASE}/objects/${normalizeType(objectType)}/${objectId}`, accessToken);
 }
 
-async function updateProperty(objectType, objectId, propertyName, value) {
-  await hubspotPost(`${HUBSPOT_BASE}/objects/${normalizeType(objectType)}/batch/update`, {
+async function updateProperty(objectType, objectId, propertyName, value, { accessToken }) {
+  await hubspotPost(`${HUBSPOT_BASE}/objects/${normalizeType(objectType)}/batch/update`, accessToken, {
     inputs: [
       { 
         id: String(objectId), 

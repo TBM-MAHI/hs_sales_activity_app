@@ -58,6 +58,7 @@ const getProperties = async (req, res) => {
 const HUBSPOT_PROPERTIES_API = 'https://api.hubapi.com/crm/v3/properties';
 const OBJECT_TYPES = ['contacts', 'companies'];
 const GROUP_NAME = 'sales_activity_tracking';
+const GROUP_LABEL = 'Sales Activity Tracking';
 
 const PROPERTIES = [
     ['last_activity_type', 'Last Activity Type'],
@@ -74,65 +75,158 @@ const authHeaders = accessToken => ({
     }
 });
 
+// Pull the useful bits out of an axios error so failures name the real cause.
+function hsError(error) {
+    const { status, data } = error.response || {};
+    return {
+        status: status || 0,
+        message: data?.message || error.message
+    };
+}
+
+const describe = ({ status, message,  }) => `HTTP ${status} - ${message}`;
+
 /**
- * POST to HubSpot, treating "already exists" (409) as a non-error.
- * Returns true if something was created, false if it already existed.
+ * Read a single property back. Returns the property, or null when HubSpot
+ * says it does not exist. Pass archived=true to look for the archived copy:
+ * an archived property still owns its name, so re-creating it answers 409
+ * while the property stays invisible in the UI. That is the case that used
+ * to be swallowed and reported as success.
  */
-async function createOrSkip(url, body, accessToken, description) {
+async function fetchProperty(objectType, name, accessToken, archived = false) {
     try {
-        await axios.post(url, body, authHeaders(accessToken));
-        return true;
+        const { data } = await axios.get(
+            `${HUBSPOT_PROPERTIES_API}/${objectType}/${name}?archived=${archived}`,
+            authHeaders(accessToken)
+        );
+        return { property: data };
     } catch (error) {
-        const { status, data } = error.response || {};
-        if (status === 409 || /already exists/i.test(data?.message || '')) {
-            logger.info(`${description} already exists — skipped`);
-            return false;
-        }
-        throw new Error(`${description}: ${data?.message || error.message}`);
+        // 404 is a real answer: the property is not there. Anything else means
+        // the read itself failed and must not be reported as "missing".
+        if (error.response?.status === 404) 
+            return { property: null };
+        return { property: null, error: hsError(error) };
     }
 }
 
 /**
- * Create the Sales Activity Tracking group and its properties on contacts
- * and companies. Called once after the OAuth token exchange.
- * Never throws — returns { ok, errors } so the install can continue either way.
+ * Make sure the property group exists. A 409 is only accepted once we have
+ * actually read the group back.
  */
-async function createAllProperties(accessToken) {
-    const errors = [];
+async function ensureGroup(objectType, accessToken) {
+    try {
+        await axios.post(
+            `${HUBSPOT_PROPERTIES_API}/${objectType}/groups`,
+            { name: GROUP_NAME, label: GROUP_LABEL, displayOrder: -1 },
+            authHeaders(accessToken)
+        );
+        return { ok: true, state: 'created' };
+    } catch (error) {
+        const failure = hsError(error);
+        if (failure.status !== 409) 
+            return { ok: false, state: 'failed', message: describe(failure) };
 
-    for (const objectType of OBJECT_TYPES) {
-        const base = `${HUBSPOT_PROPERTIES_API}/${objectType}`;
         try {
-            await createOrSkip(
-                `${base}/groups`,
-                { name: GROUP_NAME, label: 'Sales Activity Tracking', displayOrder: -1 },
-                accessToken,
-                `Group ${GROUP_NAME} on ${objectType}`
+            //check existing
+            await axios.get(
+                `${HUBSPOT_PROPERTIES_API}/${objectType}/groups/${GROUP_NAME}`,
+                authHeaders(accessToken)
             );
-        } catch (error) {
-            // No group means the properties have nowhere to go — skip this object type.
-            errors.push(error.message);
-            continue;
+            return { ok: true, state: 'existing' };
+        } catch (verifyError) {
+            return { ok: false, state: 'failed', message: describe(hsError(verifyError)) };
         }
+    }
+}
 
-        for (const [name, label] of PROPERTIES) {
-            try {
-                await createOrSkip(
-                    base,
-                    { name, label, groupName: GROUP_NAME, type: 'string', fieldType: 'text' },
-                    accessToken,
-                    `Property ${name} on ${objectType}`
-                );
-            } catch (error) {
-                errors.push(error.message);
-            }
+/**
+ * Create one property and then prove it is really there. The POST alone is
+ * not evidence - only a successful read-back of a non-archived property is.
+ */
+async function ensureProperty(objectType, [name, label], accessToken) {
+    let created = false;
+
+    try {
+        await axios.post(
+            `${HUBSPOT_PROPERTIES_API}/${objectType}`,
+            { name, label, groupName: GROUP_NAME, type: 'string', fieldType: 'text' },
+            authHeaders(accessToken)
+        );
+        created = true;
+    } catch (error) {
+        const failure = hsError(error);
+        // Anything other than a name conflict is a real failure - do not guess.
+        if (failure.status !== 409) {
+            return { name, ok: false, state: 'failed', message: describe(failure) };
         }
     }
 
-    if (errors.length) logger.error(`Property setup failed: ${errors.join('; ')}`);
-    else logger.info(`All properties ready on ${OBJECT_TYPES.join(' and ')}`);
+    const live = await fetchProperty(objectType, name, accessToken, false);
+    if (live.error) {
+        return { name, ok: false, state: 'unverified', message: `could not read the property back - ${describe(live.error)}` };
+    }
+    if (live.property && !live.property.archived) {
+        return {
+            name,
+            ok: true,
+            state: created ? 'created' : 'existing',
+            message: `in group "${live.property.groupName}"`
+        };
+    }
 
-    return { ok: errors.length === 0, errors };
+    return {
+        name,
+        ok: false,
+        state: 'missing',
+        message: `HubSpot accepted the request but the property cannot be read back on ${objectType}`
+    };
+}
+
+/**
+ * Create the Sales Activity Tracking group and its properties on contacts
+ * and companies. Called after the OAuth token exchange.
+ * Never throws - returns { ok, errors, summary } so the install can continue
+ * either way, but ok is now only true when every property was verified.
+ */
+async function createAllProperties(accessToken) {
+    const errors = [];
+    const summary = [];
+
+    if (!accessToken) {
+        const message = 'no access token was passed to createAllProperties';
+        console.log(`\n[Properties] ERROR: ${message}\n`);
+        return { ok: false, errors: [message], summary };
+    }
+
+    for (const objectType of OBJECT_TYPES) {
+        const group = await ensureGroup(objectType, accessToken);
+
+        if (!group.ok) {
+            // No group means the properties have nowhere to go - skip this object type.
+            const message = `group "${GROUP_NAME}" on ${objectType} - ${group.message}`;
+            errors.push(message);
+            console.log(`\n[Properties] ERROR: ${message}\n`);
+            continue;
+        }
+
+        const lines = [];
+        for (const property of PROPERTIES) {
+            const result = await ensureProperty(objectType, property, accessToken);
+            summary.push({ objectType, ...result });
+            lines.push(`\t${result.name.padEnd(24)}${result.state.toUpperCase().padEnd(10)}${result.message}`);
+            if (!result.ok) 
+                errors.push(`${result.name} on ${objectType} - ${result.message}`);
+        }
+
+        console.log(
+            `\n[Properties] ${objectType} - group "${GROUP_NAME}" ${group.state}\n` + lines.join('\n') + '\n'
+        );
+    }
+
+    const verified = summary.filter(entry => entry.ok).length;
+    console.log(`[Properties] ${verified}/${summary.length} properties verified on HubSpot\n`);
+
+    return { ok: errors.length === 0 && verified === OBJECT_TYPES.length * PROPERTIES.length, errors, summary };
 }
 
 module.exports = {

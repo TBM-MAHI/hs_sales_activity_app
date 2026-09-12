@@ -24,7 +24,7 @@ app.use('/oauth', hubspot_oAuthRoutes);
 app.use('/activity', activityRoutes);
 
 async function loadDatabaseConnection() {
-   // await ConnectDB();
+    await ConnectDB();
     app.listen(PORT, () => logger.info(`Server is running on port ${PORT}`));
 }
 
