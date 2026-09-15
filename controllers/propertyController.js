@@ -6,8 +6,8 @@ const getProperties = async (req, res) => {
         // Get objectType from query parameters (default to 'contacts')
         const objectType = req.query.objectType || 'contacts';
         // Get access token
-       // const accessToken = await getAccessToken(req);
-        const accessToken = process.env.TEMP_TEST_API_KEY; // Use API key for testing if OAuth is not set up
+        const accessToken = await getAccessToken(req);
+       // const accessToken = process.env.TEMP_TEST_API_KEY; // Use API key for testing if OAuth is not set up
         console.log(accessToken);
         if (!accessToken) {
             return res.status(401).json({
@@ -27,7 +27,7 @@ const getProperties = async (req, res) => {
         const properties = (response.data.results || []).filter(
             property => property.fieldType === 'text' && !property.hubspotDefined
         );
-        console.log(properties);
+        //console.log(properties);
         const custom_text_properties = properties.map(property => ({
             label: property.label,
             value: property.name
@@ -47,7 +47,6 @@ const getProperties = async (req, res) => {
                 error: error.response.data.message || 'HubSpot API error'
             });
         } else {
-            // Other error
             return res.status(500).json({
                 error: 'Internal server error'
             });
