@@ -1,14 +1,20 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { getValidAccessToken } = require('../services/tokenService');
 
 const getProperties = async (req, res) => {
     try {
         // Get objectType from query parameters (default to 'contacts')
         const objectType = req.query.objectType || 'contacts';
-        // Get access token
-        const accessToken = await getAccessToken(req);
-       // const accessToken = process.env.TEMP_TEST_API_KEY; // Use API key for testing if OAuth is not set up
-        console.log(accessToken);
+        const portalId = req.body?.origin?.portalId || req.body?.portalId;
+        if (!portalId) {
+            return res.status(400).json({
+                error: 'Missing portalId - cannot resolve an access token'
+            });
+        }
+
+        // Resolve the portal's stored token; tokenService refreshes it when expired.
+        const accessToken = await getValidAccessToken(portalId);
         if (!accessToken) {
             return res.status(401).json({
                 error: 'No access token available. Please authenticate first.'
@@ -46,11 +52,12 @@ const getProperties = async (req, res) => {
             return res.status(error.response.status).json({
                 error: error.response.data.message || 'HubSpot API error'
             });
-        } else {
-            return res.status(500).json({
-                error: 'Internal server error'
-            });
         }
+        // tokenService rejects with { status, message } - keep its status so an
+        // uninstalled portal reads as 401, not as a server fault.
+        return res.status(error.status || 500).json({
+            error: error.message || 'Internal server error'
+        });
     }
 };
 

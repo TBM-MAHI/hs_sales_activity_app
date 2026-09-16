@@ -61,3 +61,26 @@
     "dataSensitivity": "non_sensitive"
   }
 ]
+
+
+Request body: {
+  origin: {
+    portalId: 247222541,
+    userId: null,
+    actionDefinitionId: 271834273,
+    actionDefinitionVersion: 1,
+    actionExecutionIndexIdentifier: null,
+    extensionDefinitionVersionId: 1,
+    extensionDefinitionId: 271834273
+  },
+  inputFieldName: 'target_property_2',
+  fetchOptions: { q: '' },
+  objectTypeId: '0-1',
+  fields: {},
+  objectTypeIdsForObjectCoordinateFields: {},
+  userId: 68154562,
+  inputFields: {},
+  extensionsDefinitionVersion: 1,
+  extensionDefinitionId: 271834273,
+  portalId: 247222541
+}
