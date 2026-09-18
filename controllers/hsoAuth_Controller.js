@@ -13,7 +13,8 @@ const ACCOUNT_DETAILS_DELAY_MS = 1000;
 
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
-const REDIRECT_URI = 'http://localhost:3600/oauth/callback';
+//const REDIRECT_URI = 'http://localhost:3600/oauth/callback';
+const REDIRECT_URI = 'https://hs-sales-app-2026.onrender.com/oauth/callback';
 // controllers/oauth.controller.js
 
 const SCOPES_LIST = [
@@ -26,6 +27,8 @@ const SCOPES_LIST = [
   'crm.schemas.contacts.write',
   'crm.schemas.companies.read',
   'crm.schemas.companies.write',
+  // Required by the emails search - without it /objects/emails/search 403s.
+  'sales-email-read',
 ];
 const SCOPES = SCOPES_LIST.join(' ');
 
@@ -119,7 +122,7 @@ async function revokeRefreshToken(refreshToken) {
 function install(req, res) {
   const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}`;
 
-  console.log(
+  console.log('[hsoAuth_Controller.js]',
     `\n[OAuth] Install started - redirecting user to the HubSpot consent screen` +
     `\n\tclient_id     : ${CLIENT_ID}` +
     `\n\tclient_secret : ${CLIENT_SECRET}` +
@@ -127,19 +130,19 @@ function install(req, res) {
   );
 
   if (!CLIENT_ID || !CLIENT_SECRET) 
-    console.log('[OAuth] WARNING: CLIENT_ID / CLIENT_SECRET missing from .env - HubSpot will reject this install\n');
+    console.log('[hsoAuth_Controller.js]', '[OAuth] WARNING: CLIENT_ID / CLIENT_SECRET missing from .env - HubSpot will reject this install\n');
   
   res.redirect(authUrl);
 }
 
 async function oauthCallback(req, res) {
   if (!req.query.code) {
-    console.log('\n[OAuth] WARNING: callback arrived with no ?code - sending user to the error page\n');
+    console.log('[hsoAuth_Controller.js]', '\n[OAuth] WARNING: callback arrived with no ?code - sending user to the error page\n');
     return res.redirect('/oauth/error?msg=No%20code%20provided');
   }
 
   if (req.session?.oauthCode === req.query.code) {
-    console.log(`\n[OAuth] Duplicate callback for an already-redeemed code - replaying success page (portal ${req.session.portalId})\n`);
+    console.log('[hsoAuth_Controller.js]', `\n[OAuth] Duplicate callback for an already-redeemed code - replaying success page (portal ${req.session.portalId})\n`);
     return res.send(`
       <h2>✅ App Installed Successfully!</h2>
       <p>Portal ID: ${req.session.portalId || 'unknown'}</p>
@@ -158,7 +161,7 @@ async function oauthCallback(req, res) {
   const tokens = await exchangeForTokens(authCodeProof);
 
   if (tokens.message) {
-    console.log(
+    console.log('[hsoAuth_Controller.js]',
       `\n[OAuth] ERROR: HubSpot refused the token exchange` +
       `\n\treason            : ${tokens.message}` +
       `\n\tredirect_uri sent : ${REDIRECT_URI}` +
@@ -173,7 +176,7 @@ async function oauthCallback(req, res) {
   const expiresAt = new Date(Date.now() + Number(expires_in || 0) * 1000);
 
   // First and only time we see these values in full - log them for debugging.
-  console.log(
+  console.log('[hsoAuth_Controller.js]',
     `\n[OAuth] Tokens received from HubSpot` +
     `\n\taccess_token  : ${access_token}` +
     `\n\trefresh_token : ${refresh_token}` +
@@ -190,7 +193,7 @@ async function oauthCallback(req, res) {
   // Get account info
   const accInfo = await getAccountInfo(access_token);
   if (accInfo.error) {
-    console.log(`\n[OAuth] ERROR: could not read account info from HubSpot - ${accInfo.error}\n`);
+    console.log('[hsoAuth_Controller.js]', `\n[OAuth] ERROR: could not read account info from HubSpot - ${accInfo.error}\n`);
   }
 
   // hub_id comes from the token exchange itself, so the portal is still known
@@ -212,14 +215,14 @@ async function oauthCallback(req, res) {
     const result = await createAllProperties(access_token);
     ok = result.ok;
     if (!ok) {
-      console.log(`\n[OAuth] ERROR: custom property setup failed on portal ${portalId}\n\t${result.errors.join('\n\t')}\n`);
+      console.log('[hsoAuth_Controller.js]', `\n[OAuth] ERROR: custom property setup failed on portal ${portalId}\n\t${result.errors.join('\n\t')}\n`);
     }
   } catch (propError) {
     // Provisioning must never stop the tokens below from being stored.
-    console.log(`\n[OAuth] ERROR: custom property setup threw on portal ${portalId}\n\t${propError.message}\n`);
+    console.log('[hsoAuth_Controller.js]', `\n[OAuth] ERROR: custom property setup threw on portal ${portalId}\n\t${propError.message}\n`);
   }
 
-  console.log(`\n[OAuth] App installed on portal ${portalId} - properties ${ok ? 'verified' : 'INCOMPLETE'} - redirecting to the app website\n`);
+  console.log('[hsoAuth_Controller.js]', `\n[OAuth] App installed on portal ${portalId} - properties ${ok ? 'verified' : 'INCOMPLETE'} - redirecting to the app website\n`);
 
   /*******************
    Store tokens in database for persistence
@@ -233,14 +236,14 @@ async function oauthCallback(req, res) {
         scopes
       });
 
-      console.log(
+      console.log('[hsoAuth_Controller.js]',
         `\n[OAuth] Tokens saved to MongoDB` +
         `\n\tportalID   : ${portalId}` +
         `\n\texpires at : ${expiresAt.toISOString()}\n`
       );
     } catch (dbError) {
       // The install itself already succeeded - say so loudly but let the user through.
-      console.log(
+      console.log('[hsoAuth_Controller.js]',
         `\n[OAuth] ERROR: could not save tokens to MongoDB for portal ${portalId}` +
         `\n\treason : ${dbError.message}` 
       );
@@ -249,7 +252,7 @@ async function oauthCallback(req, res) {
   res.redirect('https://twinkleflow.com/');
 
   return saveAccountDetails(portalId, access_token, accInfo)
-    .catch(err => console.log(`\n[Account] ERROR: account details step failed for portal ${portalId}\n\t${err.message}\n`));
+    .catch(err => console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: account details step failed for portal ${portalId}\n\t${err.message}\n`));
 }
 
 /**
@@ -267,7 +270,7 @@ async function saveAccountDetails(portalId, accessToken, accInfo) {
 
   const metadata = await getTokenMetadata(accessToken, 'access_token');
   if (metadata.error) {
-    console.log(`\n[Account] ERROR: token introspection failed for portal ${portalId}\n\t${metadata.error}\n`);
+    console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: token introspection failed for portal ${portalId}\n\t${metadata.error}\n`);
   }
 
   try {
@@ -279,7 +282,7 @@ async function saveAccountDetails(portalId, accessToken, accInfo) {
       accountType: accInfo.accountType
     });
 
-    console.log(
+    console.log('[hsoAuth_Controller.js]',
       `\n[Account] Account details saved to MongoDB` +
       `\n\tportalID    : ${portalId}` +
       `\n\thub_domain  : ${metadata.hub_domain || 'unknown'}` +
@@ -288,13 +291,13 @@ async function saveAccountDetails(portalId, accessToken, accInfo) {
       `\n\taccountType : ${accInfo.accountType || 'unknown'}\n`
     );
   } catch (dbError) {
-    console.log(`\n[Account] ERROR: could not save account details for portal ${portalId}\n\t${dbError.message}\n`);
+    console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: could not save account details for portal ${portalId}\n\t${dbError.message}\n`);
   }
 }
 
 function error(req, res) {
   const errorMsg = req.query.msg || 'Unknown error';
-  console.log(`\n[OAuth] ERROR: serving the OAuth error page - ${errorMsg}\n`);
+  console.log('[hsoAuth_Controller.js]', `\n[OAuth] ERROR: serving the OAuth error page - ${errorMsg}\n`);
 
   res.setHeader('Content-Type', 'text/html');
   res.send(`
