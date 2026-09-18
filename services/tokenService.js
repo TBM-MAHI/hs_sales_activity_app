@@ -46,7 +46,7 @@ function refreshAndStore(portalID, refreshToken) {
 
     const pending = inFlightRefresh.get(key);
     if (pending) {
-        console.log(`[Token] portal ${portalID} - refresh already in progress, waiting on it`);
+        console.log('[tokenService.js]', `[Token] portal ${portalID} - refresh already in progress, waiting on it`);
         return pending;
     }
 
@@ -88,7 +88,7 @@ async function doRefresh(portalID, refreshToken) {
         scopes
     });
 
-    console.log(
+    console.log('[tokenService.js]',
         `\n[Token] portal ${portalID} - access token refreshed and saved` +
         `\n\taccess_token : ${access_token}` +
         `\n\tscopes       : ${(scopes || []).join(', ') || 'unchanged'}` +

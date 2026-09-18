@@ -4,7 +4,7 @@ require("dotenv").config();
 const MONGO_URL = process.env.MONGO_URL;
 
 mongoose.connection.once("open", () => {
-    console.log(`Mongodb Connection is ready..🚀🚀`);
+    console.log('[mongo.connection.js]', `Mongodb Connection is ready..🚀🚀`);
 });
 mongoose.connection.on("error", (err) => {
     console.error(err);

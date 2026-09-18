@@ -3,6 +3,17 @@ const logger = require('../utils/logger');
 const activityService = require('../services/activityService');
 const { getValidAccessToken } = require('../services/tokenService');
 
+/* Every value the action's "activity_timeline" dropdown can send, mapped to the
+   service call that answers it. Each takes (objectId, objectType, ctx), so a new
+   dropdown option only needs a line here. */
+const ACTIVITY_ACTIONS = {
+  last: activityService.getLastActivityType,
+  most: activityService.getMostFrequentActivityType,
+  last_meet_date: activityService.getLastMeetingDate,
+  last_call_date: activityService.getLastCallDate,
+  last_call_outcome: activityService.getLastCallOutcome,
+};
+
 async function handleActionInput(req, res) {
   const { objectId, objectType } = req.body?.object || {};
   const { activity_timeline, target_property_2 } = req.body?.fields || {};
@@ -15,8 +26,10 @@ async function handleActionInput(req, res) {
       { updateSuccess: false, errorMessage: 'Missing objectId/objectType' }
     );
   }
-  if (!['last', 'first', 'most'].includes(activity_timeline)) 
-    return res.status(400).json({ updateSuccess: false, errorMessage: 'activity_timeline must be last/first/most' });
+  const timeline = String(activity_timeline || '').toLowerCase();
+  const runAction = ACTIVITY_ACTIONS[timeline];
+  if (!runAction) 
+    return res.status(400).json({ updateSuccess: false, errorMessage: `activity_timeline must be one of ${Object.keys(ACTIVITY_ACTIONS).join(', ')}` });
   
   if (!target_property_2) 
     return res.status(400).json({ updateSuccess: false, errorMessage: 'Missing target_property_2' });
@@ -39,15 +52,8 @@ async function handleActionInput(req, res) {
 
     await activityService.verifyObjectExists(objectType, objectId, ctx); //get the records
 
-    const timeline = activity_timeline.toLowerCase();
-    let activityTypeResult;
-    
-    if (timeline === 'last') 
-      activityTypeResult = await activityService.getLastActivityType(objectId, objectType, ctx);
-    
-    else 
-      activityTypeResult = await activityService.getMostFrequentActivityType(objectId, objectType, ctx);
-    
+    // The date/outcome options answer with a single space rather than
+    const activityTypeResult = await runAction(objectId, objectType, ctx);
 
     if (!activityTypeResult) {
       return res.status(200).json({  updateSuccess: false, errorMessage: "Requested activity type was not found" });
@@ -59,7 +65,7 @@ async function handleActionInput(req, res) {
     return res.status(200).json({ activityTypeResult, updateSuccess: true });
 
   } catch (err) {
-    console.log(err);
+    console.log('[activityController.js]', err);
    // logger.error(`Workflow error: ${err.message}`);
     return res.status(
       err.status || 500).json({ activityTypeValue: null, updateSuccess: false, errorMessage: err.message }

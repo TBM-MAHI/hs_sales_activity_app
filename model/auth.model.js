@@ -62,7 +62,7 @@ function accessToken_Validity(authInfo, safetyMarginMs = TOKEN_REFRESH_MARGIN_MS
     const token_lifetime = Number(authInfo.expires_in) * 1000;
     const access_token_expired = token_age >= token_lifetime - safetyMarginMs;
 
-    console.log(
+    console.log('[auth.model.js]',
         `[Token] portal ${authInfo.portalID} - age ${Math.round(token_age / 1000)}s of ${Math.round(token_lifetime / 1000)}s lifetime` +
         ` - ${access_token_expired ? 'EXPIRED, refreshing' : 'still valid'}`
     );

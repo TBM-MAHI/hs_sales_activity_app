@@ -1,41 +1,38 @@
- [
- {
-   "callbackId": "ap-51107326-2422018338048-1-0",
-   "origin": {
-     "portalId": 51107326,
-     "userId": null,
-     "actionDefinitionId": 256332086,
-     "actionDefinitionVersion": 6,
-     "actionExecutionIndexIdentifier": {
-       "enrollmentId": 2422018338048,
-       "actionExecutionIndex": 0
-     },
-     "extensionDefinitionVersionId": 6,
-     "extensionDefinitionId": 256332086
-   },
-   "context": {
-     "workflowId": 1791344961,
-     "actionId": 1,
-     "actionExecutionIndexIdentifier": {
-       "enrollmentId": 2422018338048,
-       "actionExecutionIndex": 0
-     },
-     "source": "WORKFLOWS"
-   },
-   "object": { "objectId": 204503141523, "objectType": "CONTACT" },
-   "fields": {
-     "activity_timeline": "last",
-     "target_property_2": "last_activity_ty"
-   },
-   "inputFields": {
-     "activity_timeline": "last",
-     "target_property_2": "last_activity_ty"
-   },
-   "typedInputs": {
-     "activity_timeline": { "value": "last", "type": "STRING" },
-     "target_property_2": { "value": "last_activity_ty", "type": "STRING" }
-   }
- },
+[ 
+{
+  "callbackId": "ap-20157779-1704275106538-1-0",
+  "origin": {
+    "portalId": 20157779,
+    "userId": null,
+    "actionDefinitionId": 271834273,
+    "actionDefinitionVersion": 10,
+    "actionExecutionIndexIdentifier": { "enrollmentId": 1704275106538, "actionExecutionIndex": 0 },
+    "extensionDefinitionId": 271834273,
+    "extensionDefinitionVersionId": 10
+  },
+  "context": {
+    "workflowId": 4942156517,
+    "actionId": 1,
+    "actionExecutionIndexIdentifier": { "enrollmentId": 1704275106538, "actionExecutionIndex": 0 },
+    "source": "WORKFLOWS"
+  },
+  "object": { "objectId": 99463971082, "objectType": "CONTACT" },
+  "fields": {
+    "hs_target_object": "20157779-0-1-99463971082",
+    "target_property_2": "last_call_outcome",
+    "activity_timeline": "last_call_date"
+  },
+  "inputFields": {
+    "hs_target_object": "20157779-0-1-99463971082",
+    "target_property_2": "last_call_outcome",
+    "activity_timeline": "last_call_date"
+  },
+  "typedInputs": {
+    "hs_target_object": { "value": "20157779-0-1-99463971082", "type": "STRING" },
+    "target_property_2": { "value": "last_call_outcome", "type": "STRING" },
+    "activity_timeline": { "value": "last_call_date", "type": "STRING" }
+  }
+},
   {
     "updatedAt": "2024-09-12T14:12:43.357Z",
     "createdAt": "2019-08-06T02:41:09.313Z",
@@ -60,27 +57,26 @@
     "formField": true,
     "dataSensitivity": "non_sensitive"
   }
-]
-
-
-Request body: {
-  origin: {
-    portalId: 247222541,
-    userId: null,
-    actionDefinitionId: 271834273,
-    actionDefinitionVersion: 1,
-    actionExecutionIndexIdentifier: null,
-    extensionDefinitionVersionId: 1,
-    extensionDefinitionId: 271834273
+,
+{
+  "origin": {
+    "portalId": 247222541,
+    "userId": null,
+    "actionDefinitionId": 271834273,
+    "actionDefinitionVersion": 1,
+    "actionExecutionIndexIdentifier": null,
+    "extensionDefinitionVersionId": 1,
+    "extensionDefinitionId": 271834273
   },
-  inputFieldName: 'target_property_2',
-  fetchOptions: { q: '' },
-  objectTypeId: '0-1',
-  fields: {},
-  objectTypeIdsForObjectCoordinateFields: {},
-  userId: 68154562,
-  inputFields: {},
-  extensionsDefinitionVersion: 1,
-  extensionDefinitionId: 271834273,
-  portalId: 247222541
+  "inputFieldName": "target_property_2",
+  "fetchOptions": { "q": "" },
+  "objectTypeId": "0-1",
+  "fields": {},
+  "objectTypeIdsForObjectCoordinateFields": {},
+  "userId": 68154562,
+  "inputFields": {},
+  "extensionsDefinitionVersion": 1,
+  "extensionDefinitionId": 271834273,
+  "portalId": 247222541
 }
+]

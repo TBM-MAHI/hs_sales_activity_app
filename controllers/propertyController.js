@@ -48,7 +48,7 @@ const getProperties = async (req, res) => {
         logger.error(`Error fetching properties: ${error.message}`);
         if (error.response) {
             // HubSpot API error
-            console.log(error.response.data);
+            console.log('[propertyController.js]', error.response.data);
             return res.status(error.response.status).json({
                 error: error.response.data.message || 'HubSpot API error'
             });
@@ -63,15 +63,19 @@ const getProperties = async (req, res) => {
 
 const HUBSPOT_PROPERTIES_API = 'https://api.hubapi.com/crm/v3/properties';
 const OBJECT_TYPES = ['contacts', 'companies'];
-const GROUP_NAME = 'sales_activity_tracking';
-const GROUP_LABEL = 'Sales Activity Tracking';
+const GROUP_NAME = 'contacts_activity_tracking';
+const GROUP_LABEL = 'Contacts Activity Tracking';
 
+/* The five properties the app writes to. Each is created as text, not date,
+   because the action's target-property dropdown only lists text properties
+   (see the fieldType filter in getProperties) and the date answers arrive
+   already US-formatted from toUSDate(). */
 const PROPERTIES = [
     ['last_activity_type', 'Last Activity Type'],
-    ['first_activity_type', 'First Activity Type'],
     ['most_occurred_activity', 'Most Occurred Activity'],
-    ['last_activity_done_by', 'Last Activity Done By'],
-    ['last_call_outcome', 'Last Call Outcome']
+    ['last_call_outcome', 'Last Call Outcome'],
+    ['last_meeting_date', 'Last Meeting Date'],
+    ['last_call_date', 'Last Call Date']
 ];
 
 const authHeaders = accessToken => ({
@@ -189,7 +193,7 @@ async function ensureProperty(objectType, [name, label], accessToken) {
 }
 
 /**
- * Create the Sales Activity Tracking group and its properties on contacts
+ * Create the Contacts Activity Tracking group and its properties on contacts
  * and companies. Called after the OAuth token exchange.
  * Never throws - returns { ok, errors, summary } so the install can continue
  * either way, but ok is now only true when every property was verified.
@@ -200,7 +204,7 @@ async function createAllProperties(accessToken) {
 
     if (!accessToken) {
         const message = 'no access token was passed to createAllProperties';
-        console.log(`\n[Properties] ERROR: ${message}\n`);
+        console.log('[propertyController.js]', `\n[Properties] ERROR: ${message}\n`);
         return { ok: false, errors: [message], summary };
     }
 
@@ -211,7 +215,7 @@ async function createAllProperties(accessToken) {
             // No group means the properties have nowhere to go - skip this object type.
             const message = `group "${GROUP_NAME}" on ${objectType} - ${group.message}`;
             errors.push(message);
-            console.log(`\n[Properties] ERROR: ${message}\n`);
+            console.log('[propertyController.js]', `\n[Properties] ERROR: ${message}\n`);
             continue;
         }
 
@@ -224,13 +228,13 @@ async function createAllProperties(accessToken) {
                 errors.push(`${result.name} on ${objectType} - ${result.message}`);
         }
 
-        console.log(
+        console.log('[propertyController.js]',
             `\n[Properties] ${objectType} - group "${GROUP_NAME}" ${group.state}\n` + lines.join('\n') + '\n'
         );
     }
 
     const verified = summary.filter(entry => entry.ok).length;
-    console.log(`[Properties] ${verified}/${summary.length} properties verified on HubSpot\n`);
+    console.log('[propertyController.js]', `[Properties] ${verified}/${summary.length} properties verified on HubSpot\n`);
 
     return { ok: errors.length === 0 && verified === OBJECT_TYPES.length * PROPERTIES.length, errors, summary };
 }
