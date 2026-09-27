@@ -168,71 +168,87 @@ function normalizeType(type) {
 // FETCH ALL ENGAGEMENTS (searches each type's API)
 // ─────────────────────────────────────────────────────────────
 
+/* Engagement types each question actually needs. Only "last activity type" and
+   "most frequent activity type" compare across types, so only they (the
+   default) search every engagement API. */
+const ENGAGEMENTS_NEEDED = {
+  LastMeetingDate: ['meetings'],
+  LastCallDate: ['calls'],
+  LastCallOutcome: ['calls'],
+};
+
 async function fetchAllEngagements(objectType, objectId, whichFunction, { portalId, accessToken }) {
   const normType = normalizeType(objectType);
-  // The portal is part of the key - two portals must never share cached records.
-  const cacheKey = `engagements:${portalId}:${normType}:${objectId}`;
-  const cached = getCached(cacheKey);
-  if (cached) {
-    console.log('[activityService.js]', `Cache hit for ${cacheKey}`);
-    return pickShape(cached, whichFunction);
-  }
   // Association filter uses singular object form
   const assocType = normType === 'contacts' ? 'contact' : 'company';
+  const types = ENGAGEMENTS_NEEDED[whichFunction] || ENGAGEMENT_TYPES;
   const engagement_results = {};
-  let engagement_count = {};
+  const engagement_count = {};
 
-  for (const engagementType of ENGAGEMENT_TYPES) {
-    try {
-       if (engagementType === 'emails') {
-        // Use recursive pagination for emails
-        const emails = await fetchAllEmailsPaginated(assocType, objectId, accessToken);
-        
-        engagement_results['emails_sent'] = emails.sent;
-        engagement_results['emails_received'] = emails.received;
-        engagement_count['emails_sent'] = emails.sent.length;
-        engagement_count['emails_received'] = emails.received.length;
+  for (const engagementType of types) {
+    // Cached per type, so a calls-only question and a later all-types question
+    // share the calls search. The portal is part of the key - two portals must
+    // never share cached records.
+    const cacheKey = `engagements:${portalId}:${normType}:${objectId}:${engagementType}`;
+    let entry = getCached(cacheKey);
 
-        console.log('[activityService.js]', `Total: ${emails.sent.length} emails_sent, ${emails.received.length} emails_received`);
-      } else {
-        const response = await hubspotPost(
-          `${HUBSPOT_BASE}/objects/${engagementType}/search`,
-          accessToken,
-          {
-            limit: 200,
-            properties: ENGAGEMENT_PROPERTIES[engagementType] || ['hs_createdate'],
-            filters: [
-              {
-                propertyName: `associations.${assocType}`,
-                operator: 'EQ',
-                value: objectId,
-              },
-            ],
-            sorts: [
-              { propertyName: 'hs_createdate', direction: 'DESCENDING' }
-            ],
-          }
-        );
-        engagement_results[engagementType] = response.results || [];
-        engagement_count[engagementType] = response.total || 0;
-        console.log('[activityService.js]', `Fetched ${response.total} ${engagementType}`);
-        console.log(engagement_results[engagementType]);
+    if (entry) {
+      console.log('[activityService.js]', `Cache hit for ${cacheKey}`);
+    } else {
+      entry = { results: {}, counts: {} };
+      try {
+        if (engagementType === 'emails') {
+          // Use recursive pagination for emails
+          const emails = await fetchAllEmailsPaginated(assocType, objectId, accessToken);
+
+          entry.results.emails_sent = emails.sent;
+          entry.results.emails_received = emails.received;
+          entry.counts.emails_sent = emails.sent.length;
+          entry.counts.emails_received = emails.received.length;
+
+          console.log('[activityService.js]', `Total: ${emails.sent.length} emails_sent, ${emails.received.length} emails_received`);
+        } else {
+          const response = await hubspotPost(
+            `${HUBSPOT_BASE}/objects/${engagementType}/search`,
+            accessToken,
+            {
+              limit: 200,
+              properties: ENGAGEMENT_PROPERTIES[engagementType] || ['hs_createdate'],
+              filters: [
+                {
+                  propertyName: `associations.${assocType}`,
+                  operator: 'EQ',
+                  value: objectId,
+                },
+              ],
+              sorts: [
+                { propertyName: 'hs_createdate', direction: 'DESCENDING' }
+              ],
+            }
+          );
+          entry.results[engagementType] = response.results || [];
+          entry.counts[engagementType] = response.total || 0;
+          console.log('[activityService.js]', `Fetched ${response.total} ${engagementType}`);
+          console.log(entry.results[engagementType]);
+        }
+        // Failed searches are not cached, so the next request retries them.
+        setCache(cacheKey, entry);
+      } catch (err) {
+        console.log('[activityService.js]', `Failed to fetch ${engagementType}: ${err.message}`);
+        entry.results[engagementType] = [];
       }
-      console.log('[activityService.js]', "🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉🦉");
-    } catch (err) {
-      console.log('[activityService.js]', `Failed to fetch ${engagementType}: ${err.message}`);
-      engagement_results[engagementType] = [];
+      // Rate limit delay - only needed after a real HubSpot call
+      await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY));
     }
-    // Rate limit delay
-    await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY));
+
+    Object.assign(engagement_results, entry.results);
+    Object.assign(engagement_count, entry.counts);
   }
-  // Both shapes are cached together: the counts used to be recomputed on every
+
+  // Both shapes are kept together: the counts used to be recomputed on every
   // call and thrown away on a cache hit, which handed MostFrequentActivity the
   // record arrays instead of the counts.
-  const bundle = { results: engagement_results, counts: engagement_count };
-  setCache(cacheKey, bundle);
-
-  return pickShape(bundle, whichFunction);
+  return pickShape({ results: engagement_results, counts: engagement_count }, whichFunction);
 }
 
 // Counts for the "most frequent" question, the records themselves for the rest.
@@ -352,11 +368,18 @@ async function getMostFrequentActivityType(objectId, objectType, ctx) {
   const engagementsCount = await fetchAllEngagements(objectType, objectId, 'MostFrequentActivity', ctx);
   console.log('[activityService.js]', "in most frequent->",engagementsCount);  
 
-  const mostFrequentActivityType = Object.entries(engagementsCount)
-  .reduce(
-    (max, [type, count]) => count > max[1] ? [type, count] : max)[0];
-    console.log('[activityService.js]', "\t mostFrequentActivityType:", TYPE_LABELS[mostFrequentActivityType]);
-  return mostFrequentActivityType;
+  // Seeded with [null, 0] so an empty result (every search failed) cannot throw.
+  const [topType, topCount] = Object.entries(engagementsCount)
+    .reduce((max, entry) => entry[1] > max[1] ? entry : max, [null, 0]);
+
+  // No activity at all - same "not found" path as getLastActivityType.
+  if (!topType || topCount === 0) {
+    console.log('[activityService.js]', "\t mostFrequentActivityType: none");
+    return null;
+  }
+
+  console.log('[activityService.js]', "\t mostFrequentActivityType:", TYPE_LABELS[topType]);
+  return TYPE_LABELS[topType];
 }
 
 /**

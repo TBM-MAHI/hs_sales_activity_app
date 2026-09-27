@@ -63,8 +63,13 @@ const getProperties = async (req, res) => {
 
 const HUBSPOT_PROPERTIES_API = 'https://api.hubapi.com/crm/v3/properties';
 const OBJECT_TYPES = ['contacts', 'companies'];
-const GROUP_NAME = 'contacts_activity_tracking';
-const GROUP_LABEL = 'Contacts Activity Tracking';
+/* One group per object type, so a company record does not show a group
+   labelled for contacts. Group names are scoped to their object type in
+   HubSpot, so the two names never collide. */
+const GROUPS = {
+    contacts: { name: 'contacts_activity_tracking', label: 'Contacts Activity Tracking' },
+    companies: { name: 'company_activity_tracking', label: 'Company Activity Tracking' }
+};
 
 /* The five properties the app writes to. Each is created as text, not date,
    because the action's target-property dropdown only lists text properties
@@ -72,7 +77,7 @@ const GROUP_LABEL = 'Contacts Activity Tracking';
    already US-formatted from toUSDate(). */
 const PROPERTIES = [
     ['last_activity_type', 'Last Activity Type'],
-    ['most_occurred_activity', 'Most Occurred Activity'],
+    ['most_occurred_activity', 'Most Occurred Activity Type'],
     ['last_call_outcome', 'Last Call Outcome'],
     ['last_meeting_date', 'Last Meeting Date'],
     ['last_call_date', 'Last Call Date']
@@ -124,10 +129,12 @@ async function fetchProperty(objectType, name, accessToken, archived = false) {
  * actually read the group back.
  */
 async function ensureGroup(objectType, accessToken) {
+    const { name: groupName, label: groupLabel } = GROUPS[objectType];
+
     try {
         await axios.post(
             `${HUBSPOT_PROPERTIES_API}/${objectType}/groups`,
-            { name: GROUP_NAME, label: GROUP_LABEL, displayOrder: -1 },
+            { name: groupName, label: groupLabel, displayOrder: -1 },
             authHeaders(accessToken)
         );
         return { ok: true, state: 'created' };
@@ -139,7 +146,7 @@ async function ensureGroup(objectType, accessToken) {
         try {
             //check existing
             await axios.get(
-                `${HUBSPOT_PROPERTIES_API}/${objectType}/groups/${GROUP_NAME}`,
+                `${HUBSPOT_PROPERTIES_API}/${objectType}/groups/${groupName}`,
                 authHeaders(accessToken)
             );
             return { ok: true, state: 'existing' };
@@ -154,12 +161,14 @@ async function ensureGroup(objectType, accessToken) {
  * not evidence - only a successful read-back of a non-archived property is.
  */
 async function ensureProperty(objectType, [name, label], accessToken) {
+    const groupName = GROUPS[objectType].name;
+
     let created = false;
 
     try {
         await axios.post(
             `${HUBSPOT_PROPERTIES_API}/${objectType}`,
-            { name, label, groupName: GROUP_NAME, type: 'string', fieldType: 'text' },
+            { name, label, groupName, type: 'string', fieldType: 'text' },
             authHeaders(accessToken)
         );
         created = true;
@@ -193,7 +202,7 @@ async function ensureProperty(objectType, [name, label], accessToken) {
 }
 
 /**
- * Create the Contacts Activity Tracking group and its properties on contacts
+ * Create the activity tracking group and its properties on contacts
  * and companies. Called after the OAuth token exchange.
  * Never throws - returns { ok, errors, summary } so the install can continue
  * either way, but ok is now only true when every property was verified.
@@ -209,11 +218,12 @@ async function createAllProperties(accessToken) {
     }
 
     for (const objectType of OBJECT_TYPES) {
+        const groupName = GROUPS[objectType].name;
         const group = await ensureGroup(objectType, accessToken);
 
         if (!group.ok) {
             // No group means the properties have nowhere to go - skip this object type.
-            const message = `group "${GROUP_NAME}" on ${objectType} - ${group.message}`;
+            const message = `group "${groupName}" on ${objectType} - ${group.message}`;
             errors.push(message);
             console.log('[propertyController.js]', `\n[Properties] ERROR: ${message}\n`);
             continue;
@@ -229,7 +239,7 @@ async function createAllProperties(accessToken) {
         }
 
         console.log('[propertyController.js]',
-            `\n[Properties] ${objectType} - group "${GROUP_NAME}" ${group.state}\n` + lines.join('\n') + '\n'
+            `\n[Properties] ${objectType} - group "${groupName}" ${group.state}\n` + lines.join('\n') + '\n'
         );
     }
 
