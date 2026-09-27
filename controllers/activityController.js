@@ -2,6 +2,7 @@
 const logger = require('../utils/logger');
 const activityService = require('../services/activityService');
 const { getValidAccessToken } = require('../services/tokenService');
+const subscriptionService = require('../services/subscriptionService');
 
 /* Every value the action's "activity_timeline" dropdown can send, mapped to the
    service call that answers it. Each takes (objectId, objectType, ctx), so a new
@@ -45,6 +46,30 @@ async function handleActionInput(req, res) {
   });  */
 
  try {
+    // Quota gate - runs before any HubSpot call, including the token refresh.
+    // getOrCreate is the fallback for portals installed before subscriptions existed.
+    let subscription = await subscriptionService.getOrCreateByPortalId(portalId);
+    subscription = await subscriptionService.resetIfPeriodExpired(subscription);
+
+    if (!subscriptionService.isWithinLimit(subscription)) {
+      const limit = subscriptionService.getLimitForPlan(subscription.plan);
+      logger.info(`Quota exceeded for portal ${portalId} - plan ${subscription.plan}, ${subscription.usageCount}/${limit}`);
+
+      /* DECISION (revisit): answer 200, not 4xx. HubSpot retries custom-action
+         calls that fail with 5xx/429, and a blocked portal must not be put into
+         a retry loop. HubSpot's docs indicate other 4xx are treated as a
+         permanent failure (no retry) - once confirmed, a 4xx could be used here
+         so the enrollment shows as failed in the workflow history. */
+      return res.status(200).json({
+        status: 'quota_exceeded',
+        updateSuccess: false,
+        plan: subscription.plan,
+        usageCount: subscription.usageCount,
+        limit,
+        errorMessage: `Monthly limit of ${limit} records reached on the ${subscription.plan} plan. Upgrade your plan to keep processing records this month.`
+      });
+    }
+
     // Resolve the portal's token once for this request. Expired tokens are
     // refreshed from the stored refresh token inside tokenService.
     const accessToken = await getValidAccessToken(portalId);
@@ -60,6 +85,15 @@ async function handleActionInput(req, res) {
     }
 
    await activityService.updateProperty(objectType, objectId, target_property_2, activityTypeResult, ctx);
+
+    // Count the record only once HubSpot accepted the update - any HubSpot
+    // error above throws into the catch and is never billed. A failed increment
+    // is only logged: the update is done, and a 500 would make HubSpot retry it.
+    try {
+      await subscriptionService.incrementUsage(portalId);
+    } catch (usageErr) {
+      console.log('[activityController.js]', `usage increment failed for portal ${portalId}: ${usageErr.message}`);
+    }
 
     logger.info(`Updated ${objectType} - ${objectId} - ${target_property_2} = ${activityTypeResult}`);
     return res.status(200).json({ activityTypeResult, updateSuccess: true });

@@ -3,6 +3,9 @@ const { createAllProperties } = require('./propertyController');
 const { insert_to_UserAuth_Collection } = require('../model/auth.model');
 const { upsert_AccountDetails } = require('../model/account_details.model');
 const { getTokenMetadata } = require('../services/tokenService');
+const { getOrCreateByPortalId } = require('../services/subscriptionService');
+// My own portal - records the install on my HubSpot account, not the client's.
+const { recordAppInstall } = require('../services/myHubspotService');
 
 // https://developers.hubspot.com/docs/api-reference/latest/authentication/manage-oauth-tokens
 const OAUTH_API = 'https://api.hubapi.com/oauth/2026-03';
@@ -245,13 +248,29 @@ async function oauthCallback(req, res) {
       // The install itself already succeeded - say so loudly but let the user through.
       console.log('[hsoAuth_Controller.js]',
         `\n[OAuth] ERROR: could not save tokens to MongoDB for portal ${portalId}` +
-        `\n\treason : ${dbError.message}` 
+        `\n\treason : ${dbError.message}`
       );
     }
-  
+
+  // Put every new portal on the free plan right away, before its first action
+  // runs. The action handler also creates it on demand, so a failure here is
+  // logged but does not block the install.
+  if (portalId) {
+    try {
+      const subscription = await getOrCreateByPortalId(portalId);
+      console.log('[hsoAuth_Controller.js]', `\n[OAuth] Subscription ready for portal ${portalId} - plan ${subscription.plan}\n`);
+    } catch (subError) {
+      console.log('[hsoAuth_Controller.js]', `\n[OAuth] ERROR: could not create subscription for portal ${portalId}\n\t${subError.message}\n`);
+    }
+  }
+
   res.redirect('https://twinkleflow.com/');
 
+  /* Very last step: mirror this install onto my own HubSpot account. Runs after
+     the account details are stored, and after the response has already gone out,
+     so nothing here can delay or fail the install. */
   return saveAccountDetails(portalId, access_token, accInfo)
+    .then(details => recordAppInstall({ ...details, portalId, clientAccessToken: access_token }))
     .catch(err => console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: account details step failed for portal ${portalId}\n\t${err.message}\n`));
 }
 
@@ -293,6 +312,15 @@ async function saveAccountDetails(portalId, accessToken, accInfo) {
   } catch (dbError) {
     console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: could not save account details for portal ${portalId}\n\t${dbError.message}\n`);
   }
+
+  // Handed to recordAppInstall - returned even when the DB write above failed,
+  // so a Mongo problem does not also lose the install record on my portal.
+  return {
+    hub_domain: metadata.hub_domain,
+    user_email: metadata.user_email,
+    user_id: metadata.user_id,
+    timeZone: accInfo.timeZone
+  };
 }
 
 function error(req, res) {
