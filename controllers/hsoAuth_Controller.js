@@ -270,7 +270,7 @@ async function oauthCallback(req, res) {
      the account details are stored, and after the response has already gone out,
      so nothing here can delay or fail the install. */
   return saveAccountDetails(portalId, access_token, accInfo)
-    .then(details => recordAppInstall({ ...details, portalId, clientAccessToken: access_token }))
+    .then(details => recordAppInstall({ ...details, portalId }))
     .catch(err => console.log('[hsoAuth_Controller.js]', `\n[Account] ERROR: account details step failed for portal ${portalId}\n\t${err.message}\n`));
 }
 
@@ -318,7 +318,6 @@ async function saveAccountDetails(portalId, accessToken, accInfo) {
   return {
     hub_domain: metadata.hub_domain,
     user_email: metadata.user_email,
-    user_id: metadata.user_id,
     timeZone: accInfo.timeZone
   };
 }

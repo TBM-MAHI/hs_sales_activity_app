@@ -1,21 +1,32 @@
 // services/myHubspotService.js
+/*
+ * MY OWN HUBSPOT ACCOUNT - not a client's.
+ *
+ * Every other file talks to the portal that installed the app with that
+ * portal's OAuth token. This file only ever talks to my own portal, with the
+ * private-app token in MY_HUB_API_KEY, and is where anything that records app
+ * activity on my side belongs.
+ *
+ * Nothing here throws: it runs after the install has finished, so a failure is
+ * logged and swallowed rather than reaching the person installing the app.
+ */
 const axios = require('axios');
 
 const HUBSPOT_BASE = 'https://api.hubapi.com';
 const MY_HUB_API_KEY = process.env.MY_HUB_API_KEY;
+const LOG = '[myHubspotService.js]';
 
-// The install contact's custom properties on MY portal.
 const INSTALL_TYPE_PROPERTY = 'contacts_app_install_type';
 const USAGE_PROPERTY = 'contacts_activity_app_usage';
 const DOMAIN_PROPERTY = 'company_domain';
 
-// The dropdown value written for an install of this app. A second app would add
-// its own option here and pass its own value.
+// The dropdown value written for an install of this app. A second app adds its
+// own option here and passes its own value.
 const INSTALL_TYPE_VALUE = 'Contacts Activity Tracker App';
 
-/* Properties created on my portal if they are not already there, so a fresh
-   copy of this account does not need them set up by hand. They go in the stock
-   "contactinformation" group, which always exists. */
+/* Created on my portal when missing, and corrected when one already exists with
+   the wrong fieldType - company_domain holds a bare domain, so as a url field it
+   would reject "acme.com" with INVALID_URL. Stock "contactinformation" group. */
 const MY_PROPERTIES = [
   {
     name: INSTALL_TYPE_PROPERTY,
@@ -28,10 +39,9 @@ const MY_PROPERTIES = [
   { name: DOMAIN_PROPERTY, label: 'Company Domain', type: 'string', fieldType: 'text' }
 ];
 
-/* IANA timezone -> the value HubSpot's stock "Country/Region" (country)
-   property expects. HubSpot hands back a zone like "America/Denver" and has no
-   country field of its own, so this is the only mapping available. Unlisted
-   zones leave country unset rather than guessing. */
+/* IANA timezone -> the value HubSpot's stock "Country/Region" (country) property
+   expects. Account-info returns a zone like "America/Denver" and no country, so
+   this is the only mapping available. An unlisted zone leaves country blank. */
 const TIMEZONE_COUNTRY = {
   'America/New_York': 'United States',
   'America/Detroit': 'United States',
@@ -99,68 +109,55 @@ const TIMEZONE_COUNTRY = {
 };
 
 const myHeaders = () => ({
-  headers: {
-    Authorization: `Bearer ${MY_HUB_API_KEY}`,
-    'Content-Type': 'application/json'
-  }
+  headers: { Authorization: `Bearer ${MY_HUB_API_KEY}`, 'Content-Type': 'application/json' }
 });
+
+const log = message => console.log(LOG, message);
 
 // Pull the useful bits out of an axios error so failures name the real cause.
 function hsMessage(error) {
-  const body = error.response?.data;
-  const reason = body?.message || error.message;
+  const reason = error.response?.data?.message || error.message;
   return error.response?.status ? `HTTP ${error.response.status} - ${reason}` : reason;
 }
 
-/* HubSpot's own domains are not the installer's company domain, so they are
-   never written to company_domain. */
+/* The installing portal's own domain, lowercased, or null. HubSpot's own
+   domains are not a company domain, and the installer's email domain is not
+   either: a blank field beats a guessed one. */
 const HUBSPOT_OWNED = /(^|\.)(hubspot\.com|hubspotdev\.com|hs-sites\.com)$/i;
 
-function isRealDomain(domain) {
-  return Boolean(domain) && domain.includes('.') && !HUBSPOT_OWNED.test(domain);
-}
-
-/**
- * The installing portal's own domain, or null. Deliberately not guessed from
- * the installer's email address: a personal or free-mail address is not the
- * company domain, and a blank field is better than a wrong one.
- */
 function resolveDomain(hubDomain) {
-  return isRealDomain(hubDomain) ? hubDomain.toLowerCase() : null;
+  const domain = String(hubDomain || '').toLowerCase();
+  return domain.includes('.') && !HUBSPOT_OWNED.test(domain) ? domain : null;
 }
 
 /**
- * The installer's real name, read from the CLIENT portal with the client's own
- * token. Needs settings.users.read, which this app does not currently request,
- * so a 403 here is expected and leaves the name fields blank.
- */
-async function fetchInstallerName(userId, clientAccessToken) {
-  if (!userId || !clientAccessToken) return null;
-
-  try {
-    const { data } = await axios.get(
-      `${HUBSPOT_BASE}/settings/v3/users/${userId}`,
-      { headers: { Authorization: `Bearer ${clientAccessToken}` } }
-    );
-    return { firstname: data.firstName || null, lastname: data.lastName || null };
-  } catch (err) {
-    console.log('[myHubspotService.js]', `\t installer name unavailable (${hsMessage(err)}) - leaving the name blank`);
-    return null;
-  }
-}
-
-/**
- * Create the three custom properties on MY portal when they are missing. Each
- * is checked first, so this is safe to run on every install.
+ * Create each property that is missing, and fix the fieldType of one that
+ * exists with the wrong one. Returns { [name]: fieldType } as things stand
+ * afterwards, so the caller knows what a value will be checked against.
  */
 async function ensureMyProperties() {
+  const fieldTypes = {};
+
   for (const property of MY_PROPERTIES) {
+    const url = `${HUBSPOT_BASE}/crm/v3/properties/contacts/${property.name}`;
+
     try {
-      await axios.get(`${HUBSPOT_BASE}/crm/v3/properties/contacts/${property.name}`, myHeaders());
-      continue; // already there
+      const { data } = await axios.get(url, myHeaders());
+      fieldTypes[property.name] = data.fieldType;
+
+      if (data.fieldType !== property.fieldType) {
+        try {
+          await axios.patch(url, { type: property.type, fieldType: property.fieldType }, myHeaders());
+          fieldTypes[property.name] = property.fieldType;
+          log(`\t ${property.name} was a "${data.fieldType}" field - changed it to "${property.fieldType}"`);
+        } catch (patchError) {
+          log(`\t ${property.name} is a "${data.fieldType}" field and could not be changed - ${hsMessage(patchError)}`);
+        }
+      }
+      continue;
     } catch (err) {
       if (err.response?.status !== 404) {
-        console.log('[myHubspotService.js]', `\t could not check ${property.name} - ${hsMessage(err)}`);
+        log(`\t could not check ${property.name} - ${hsMessage(err)}`);
         continue;
       }
     }
@@ -171,14 +168,17 @@ async function ensureMyProperties() {
         { groupName: 'contactinformation', ...property },
         myHeaders()
       );
-      console.log('[myHubspotService.js]', `\t created property ${property.name} on my portal`);
+      fieldTypes[property.name] = property.fieldType;
+      log(`\t created property ${property.name} on my portal`);
     } catch (err) {
-      console.log('[myHubspotService.js]', `\t could not create ${property.name} - ${hsMessage(err)}`);
+      log(`\t could not create ${property.name} - ${hsMessage(err)}`);
     }
   }
+
+  return fieldTypes;
 }
 
-/** Find an existing contact on my portal by email. Null when there is none. */
+/** The contact on my portal with this email, or null. */
 async function findContactByEmail(email) {
   try {
     const { data } = await axios.post(
@@ -192,114 +192,88 @@ async function findContactByEmail(email) {
     );
     return data.results?.[0] || null;
   } catch (err) {
-    console.log('[myHubspotService.js]', `\t contact lookup failed for ${email} - ${hsMessage(err)}`);
+    log(`\t contact lookup failed for ${email} - ${hsMessage(err)}`);
     return null;
   }
 }
 
 /**
- * Record an app install as a contact on MY portal.
+ * Record an app install as a contact on MY portal. Runs once the install has
+ * already completed. Never throws and never rejects - the worst case is a
+ * logged failure and { ok: false }.
  *
- * Called once the install has already completed, with the details gathered
- * during it. Never throws and never returns a rejected promise - the worst
- * case is a logged failure.
+ * Only values HubSpot actually gives us are written; anything unknown is left
+ * out of the payload, which leaves the field blank rather than wrong.
  *
  * @param {object}  install
- * @param {number}  install.portalId            the portal that installed
- * @param {string}  install.user_email          installer's email (from introspection)
- * @param {string} [install.hub_domain]         installing portal's domain
- * @param {string} [install.timeZone]           e.g. "America/Denver"
- * @param {number} [install.user_id]            installer's HubSpot user id
- * @param {string} [install.clientAccessToken]  client token, for the name lookup
+ * @param {number}  install.portalId     the portal that installed
+ * @param {string}  install.user_email   installer's email (from introspection)
+ * @param {string} [install.hub_domain]  installing portal's domain
+ * @param {string} [install.timeZone]    e.g. "America/Denver"
  */
-async function recordAppInstall(install = {}) {
-  const { portalId, user_email, hub_domain, timeZone, user_id, clientAccessToken } = install;
-
+async function recordAppInstall({ portalId, user_email, hub_domain, timeZone } = {}) {
   if (!MY_HUB_API_KEY) {
-    console.log('[myHubspotService.js]', '\n[MyPortal] ERROR: MY_HUB_API_KEY is missing from .env - install not recorded\n');
+    log('\n[My Hubspot Portal] ERROR: MY_HUB_API_KEY is missing from .env - install not recorded\n');
     return { ok: false, error: 'MY_HUB_API_KEY missing' };
   }
 
-  // Email is the contact's identity on my portal - without it there is nothing
-  // to create or to match an existing record on.
+  // Email is the contact's identity here - without it there is nothing to
+  // create, and nothing to match an existing record on.
   if (!user_email) {
-    console.log('[myHubspotService.js]', `\n[MyPortal] ERROR: no installer email for portal ${portalId} - install not recorded\n`);
+    log(`\n[My Hubspot Portal] ERROR: no installer email for portal ${portalId} - install not recorded\n`);
     return { ok: false, error: 'no installer email' };
   }
 
   try {
-    await ensureMyProperties();
+    const fieldTypes = await ensureMyProperties();
 
     const domain = resolveDomain(hub_domain);
-    const named = await fetchInstallerName(user_id, clientAccessToken) || {};
     const country = TIMEZONE_COUNTRY[timeZone] || null;
+    // The only name HubSpot gives us is the email address. Last name stays blank.
+    const firstname = user_email.split('@')[0] || null;
 
-    if (!domain) {
-      console.log('[myHubspotService.js]', `\t no usable portal domain for portal ${portalId} - leaving Company Domain blank`);
-    }
+    if (!domain) log(`\t no usable portal domain for portal ${portalId} - Company Domain left blank`);
+    if (timeZone && !country) log(`\t timezone "${timeZone}" is not in TIMEZONE_COUNTRY - Country/Region left blank`);
 
-    if (timeZone && !country) {
-      console.log('[myHubspotService.js]', `\t timezone "${timeZone}" is not in TIMEZONE_COUNTRY - leaving Country/Region unset`);
-    }
-
-    // Only non-empty values are sent, so a blank guess never overwrites
-    // something better already on the record.
-    const properties = {
-      email: user_email,
-      [INSTALL_TYPE_PROPERTY]: INSTALL_TYPE_VALUE
-    };
-    if (named.firstname) properties.firstname = named.firstname;
-    if (named.lastname) properties.lastname = named.lastname;
+    const properties = { email: user_email, [INSTALL_TYPE_PROPERTY]: INSTALL_TYPE_VALUE };
+    if (firstname) properties.firstname = firstname;
     if (country) properties.country = country;
-    if (domain) properties[DOMAIN_PROPERTY] = domain;
+    if (domain) {
+      // Always bare - "acme-corp.com", never "https://acme-corp.com". If the
+      // fieldType fix above failed the field is skipped rather than prefixed.
+      if (fieldTypes[DOMAIN_PROPERTY] === 'url') log(`\t ${DOMAIN_PROPERTY} is still a url field - skipping it`);
+      else properties[DOMAIN_PROPERTY] = domain;
+    }
 
     const existing = await findContactByEmail(user_email);
+    let contactId;
 
     if (existing) {
-      // Usage is deliberately left alone on an existing contact: it is a
-      // running total and a re-install must not reset it to 0.
-      await axios.patch(
-        `${HUBSPOT_BASE}/crm/v3/objects/contacts/${existing.id}`,
-        { properties },
-        myHeaders()
-      );
-      console.log('[myHubspotService.js]',
-        `\n[My Hubspot Portal] Install recorded - updated existing contact ${existing.id}` +
-        `\n\tportal       : ${portalId}` +
-        `\n\temail        : ${user_email}` +
-        `\n\tname         : ${[named.firstname, named.lastname].filter(Boolean).join(' ') || 'blank'}` +
-        `\n\tdomain       : ${domain || 'blank'}` +
-        `\n\tcountry      : ${country || 'blank'} (from ${timeZone || 'no timezone'})` +
-        `\n\tusage        : left at ${existing.properties?.[USAGE_PROPERTY] ?? '0'}\n`
-      );
-      return { ok: true, contactId: existing.id, created: false };
+      // usageCount is a running total: a re-install must not reset it, so the
+      // property is left out of the update entirely.
+      contactId = existing.id;
+      await axios.patch(`${HUBSPOT_BASE}/crm/v3/objects/contacts/${contactId}`, { properties }, myHeaders());
+    } else {
+      properties[USAGE_PROPERTY] = 0;
+      const { data } = await axios.post(`${HUBSPOT_BASE}/crm/v3/objects/contacts`, { properties }, myHeaders());
+      contactId = data.id;
     }
 
-    properties[USAGE_PROPERTY] = 0;
-    const { data } = await axios.post(
-      `${HUBSPOT_BASE}/crm/v3/objects/contacts`,
-      { properties },
-      myHeaders()
+    log(
+      `\n[My Hubspot Portal] Install recorded - ${existing ? 'updated' : 'created'} contact ${contactId}` +
+      `\n\tportal    : ${portalId}` +
+      `\n\temail     : ${user_email}` +
+      `\n\tfirstname : ${firstname || 'blank'} (last name always blank)` +
+      `\n\tdomain    : ${properties[DOMAIN_PROPERTY] || 'blank'}` +
+      `\n\tcountry   : ${country || 'blank'} (from ${timeZone || 'no timezone'})` +
+      `\n\tusage     : ${existing ? `left at ${existing.properties?.[USAGE_PROPERTY] ?? 0}` : 0}\n`
     );
-    console.log('[myHubspotService.js]',
-      `\n[My Hubspot Portal] Install recorded - created contact ${data.id}` +
-      `\n\temail        : ${user_email}` +
-      `\n\tname         : ${[named.firstname, named.lastname].filter(Boolean).join(' ') || 'blank'}` +
-      `\n\tdomain       : ${domain || 'blank'}` +
-      `\n\tcountry      : ${country || 'blank'} (from ${timeZone || 'no timezone'})` +
-      `\n\tusage        : 0\n`
-    );
-    return { ok: true, contactId: data.id, created: true };
+    return { ok: true, contactId, created: !existing };
 
   } catch (err) {
-    console.log('[myHubspotService.js]', `\n[MyPortal] ERROR: could not record the install for portal ${portalId}\n\t${hsMessage(err)}\n`);
+    log(`\n[My Hubspot Portal] ERROR: could not record the install for portal ${portalId}\n\t${hsMessage(err)}\n`);
     return { ok: false, error: hsMessage(err) };
   }
 }
 
-module.exports = {
-  recordAppInstall,
-  // exported for tests / reuse by later additions to this file
-  resolveDomain,
-  TIMEZONE_COUNTRY
-};
+module.exports = { recordAppInstall };

@@ -124,8 +124,7 @@ async function getTokenMetadata(token, tokenTypeHint = 'access_token') {
         return {
             hub_id: data.hub_id,
             hub_domain: data.hub_domain,   // stored on account_details
-            user_email: data.user,         // "user" is the email address
-            user_id: data.user_id          // used to look the installer's name up
+            user_email: data.user          // "user" is the email address
         };
     } catch (err) {
         const body = err.response?.data;
