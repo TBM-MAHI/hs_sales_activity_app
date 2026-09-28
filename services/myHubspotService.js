@@ -178,6 +178,33 @@ async function ensureMyProperties() {
   return fieldTypes;
 }
 
+/**
+ * Create (no id) or update (id) a contact on my portal. If HubSpot rejects
+ * specific property values - e.g. a validation rule added to a property in the
+ * UI, which the API can read but cannot remove - retry once without them, so
+ * one bad field never loses the whole install record. The email itself being
+ * rejected is fatal: it is the record's identity.
+ */
+async function writeContact(id, properties) {
+  const send = props => id
+    ? axios.patch(`${HUBSPOT_BASE}/crm/v3/objects/contacts/${id}`, { properties: props }, myHeaders())
+    : axios.post(`${HUBSPOT_BASE}/crm/v3/objects/contacts`, { properties: props }, myHeaders());
+
+  try {
+    return (await send(properties)).data;
+  } catch (err) {
+    const rejected = (err.response?.data?.errors || [])
+      .flatMap(e => e.context?.propertyName || [])
+      .filter(name => name in properties);
+
+    if (err.response?.status !== 400 || !rejected.length || rejected.includes('email')) throw err;
+
+    log(`\t HubSpot rejected ${rejected.join(', ')} - ${hsMessage(err)}\n\t retrying without ${rejected.length > 1 ? 'them' : 'it'}`);
+    for (const name of rejected) delete properties[name];
+    return (await send(properties)).data;
+  }
+}
+
 /** The contact on my portal with this email, or null. */
 async function findContactByEmail(email) {
   try {
@@ -225,7 +252,7 @@ async function recordAppInstall({ portalId, user_email, hub_domain, timeZone } =
   }
 
   try {
-    const fieldTypes = await ensureMyProperties();
+    await ensureMyProperties();
 
     const domain = resolveDomain(hub_domain);
     const country = TIMEZONE_COUNTRY[timeZone] || null;
@@ -238,26 +265,15 @@ async function recordAppInstall({ portalId, user_email, hub_domain, timeZone } =
     const properties = { email: user_email, [INSTALL_TYPE_PROPERTY]: INSTALL_TYPE_VALUE };
     if (firstname) properties.firstname = firstname;
     if (country) properties.country = country;
-    if (domain) {
-      // Always bare - "acme-corp.com", never "https://acme-corp.com". If the
-      // fieldType fix above failed the field is skipped rather than prefixed.
-      if (fieldTypes[DOMAIN_PROPERTY] === 'url') log(`\t ${DOMAIN_PROPERTY} is still a url field - skipping it`);
-      else properties[DOMAIN_PROPERTY] = domain;
-    }
+    // company_domain carries a URL validation rule on my portal, so it needs the protocol.
+    if (domain) properties[DOMAIN_PROPERTY] = `https://${domain}`;
 
     const existing = await findContactByEmail(user_email);
-    let contactId;
 
-    if (existing) {
-      // usageCount is a running total: a re-install must not reset it, so the
-      // property is left out of the update entirely.
-      contactId = existing.id;
-      await axios.patch(`${HUBSPOT_BASE}/crm/v3/objects/contacts/${contactId}`, { properties }, myHeaders());
-    } else {
-      properties[USAGE_PROPERTY] = 0;
-      const { data } = await axios.post(`${HUBSPOT_BASE}/crm/v3/objects/contacts`, { properties }, myHeaders());
-      contactId = data.id;
-    }
+    // usage is a running total: a re-install must not reset it, so it is only
+    // set when the contact is created and left out of an update entirely.
+    if (!existing) properties[USAGE_PROPERTY] = 0;
+    const contactId = (await writeContact(existing?.id, properties)).id;
 
     log(
       `\n[My Hubspot Portal] Install recorded - ${existing ? 'updated' : 'created'} contact ${contactId}` +
