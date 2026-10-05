@@ -55,12 +55,11 @@ async function handleActionInput(req, res) {
       const limit = subscriptionService.getLimitForPlan(subscription.plan);
       logger.info(`Quota exceeded for portal ${portalId} - plan ${subscription.plan}, ${subscription.usageCount}/${limit}`);
 
-      /* DECISION (revisit): answer 200, not 4xx. HubSpot retries custom-action
-         calls that fail with 5xx/429, and a blocked portal must not be put into
-         a retry loop. HubSpot's docs indicate other 4xx are treated as a
-         permanent failure (no retry) - once confirmed, a 4xx could be used here
-         so the enrollment shows as failed in the workflow history. */
-      return res.status(200).json({
+      /* 400 so the enrollment shows as an error in the workflow history.
+         HubSpot retries custom-action calls that fail with 5xx/429 only; other
+         4xx are a permanent failure, so a blocked portal does not loop. Never
+         change this to 429 or 5xx - those are retried. */
+      return res.status(400).json({
         status: 'quota_exceeded',
         updateSuccess: false,
         plan: subscription.plan,

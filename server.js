@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const hubspot_oAuthRoutes = require('./routes/oAuthRoutes');
 const activityRoutes = require('./routes/activityRoute');
+const accountRoutes = require('./routes/accountRoute');
 let { ConnectDB } = require("./utils/mongo.connection");
 const session = require('express-session');
 const logger = require('./utils/logger'); // Add logger
@@ -22,6 +23,7 @@ app.use(session({
 
 app.use('/oauth', hubspot_oAuthRoutes);
 app.use('/activity', activityRoutes);
+app.use('/account', accountRoutes);
 
 async function loadDatabaseConnection() {
     await ConnectDB();
