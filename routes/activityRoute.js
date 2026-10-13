@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 let api_Router = express.Router();
 let propertyController = require('../controllers/propertyController');
 let activityController = require('../controllers/activityController');
+const { checkUsageLimit } = require('../middleware/usageLimit');
 
 const randomDelay = () => {
     const min = 5000;
@@ -27,7 +28,7 @@ api_Router.post('/getallprops', async (req, res) => {
 });
 
 //hubspot activity route
-api_Router.post('/getactivityresult', async (req, res) => {
+api_Router.post('/getactivityresult', checkUsageLimit, async (req, res) => {
   logger.info('calling route -> activity/getactivityresult');
   console.log('[activityRoute.js]',  '\t Request body:',req.body)
   await activityController.handleActionInput(req, res);

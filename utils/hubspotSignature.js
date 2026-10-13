@@ -20,6 +20,14 @@ function decodeUri(uri) {
  * this app. Only after this passes can req.query.portalId be trusted.
  */
 function validateHubSpotSignature(req, res, next) {
+    // Local testing from Postman/browser: set SKIP_HUBSPOT_SIGNATURE=true in .env.
+    // Also requires a localhost request, so the flag does nothing if it ever
+    // reaches Render.
+    if (process.env.SKIP_HUBSPOT_SIGNATURE === 'true' && ['localhost', '127.0.0.1'].includes(req.hostname)) {
+        console.log('[hubspotSignature.js]', `Signature check SKIPPED (local) for ${req.method} ${req.originalUrl}`);
+        return next();
+    }
+
     const signature = req.get('X-HubSpot-Signature-v3');
     const timestamp = req.get('X-HubSpot-Request-Timestamp');
 

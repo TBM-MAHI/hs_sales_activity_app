@@ -46,28 +46,7 @@ async function handleActionInput(req, res) {
   });  */
 
  try {
-    // Quota gate - runs before any HubSpot call, including the token refresh.
-    // getOrCreate is the fallback for portals installed before subscriptions existed.
-    let subscription = await subscriptionService.getOrCreateByPortalId(portalId);
-    subscription = await subscriptionService.resetIfPeriodExpired(subscription);
-
-    if (!subscriptionService.isWithinLimit(subscription)) {
-      const limit = subscriptionService.getLimitForPlan(subscription.plan);
-      logger.info(`Quota exceeded for portal ${portalId} - plan ${subscription.plan}, ${subscription.usageCount}/${limit}`);
-
-      /* 400 so the enrollment shows as an error in the workflow history.
-         HubSpot retries custom-action calls that fail with 5xx/429 only; other
-         4xx are a permanent failure, so a blocked portal does not loop. Never
-         change this to 429 or 5xx - those are retried. */
-      return res.status(400).json({
-        status: 'quota_exceeded',
-        updateSuccess: false,
-        plan: subscription.plan,
-        usageCount: subscription.usageCount,
-        limit,
-        errorMessage: `Monthly limit of ${limit} records reached on the ${subscription.plan} plan. Upgrade your plan to keep processing records this month.`
-      });
-    }
+    // Quota gate runs before this, in middleware/usageLimit.js (see activityRoute.js).
 
     // Resolve the portal's token once for this request. Expired tokens are
     // refreshed from the stored refresh token inside tokenService.

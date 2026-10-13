@@ -22,6 +22,7 @@ async function getAccountInfo(req, res) {
     return res.status(200).json({
       portalId: subscription.portalId,
       email: details?.user_email || null,   // the user who installed the app
+      domain: details?.hub_domain || null,  // e.g. mycompany.hubspot.com
       plan: subscription.plan,
       status: subscription.status,
       usageCount: subscription.usageCount,
