@@ -93,6 +93,17 @@ function subscriptionUpdate(event) {
   return update;
 }
 
+// The only events that change a portal's plan/status. Subscribe the Paddle
+// notification destination to exactly these.
+const HANDLED_EVENTS = new Set([
+  'subscription.created',
+  'subscription.activated',
+  'subscription.updated', // plan change / resume / scheduled cancel from the portal
+  'subscription.past_due',
+  'subscription.canceled',
+  'transaction.payment_failed',
+]);
+
 /**
  * Apply a Paddle event to the portal's subscription. The occurred_at filter
  * drops events older than the last one applied - Paddle can deliver out of order.
@@ -135,38 +146,35 @@ async function handleWebhook(req, res) {
 
   const portalId = event.data?.custom_data?.portal_id;
   const occurredAt = new Date(event.occurred_at || Date.now());
-  logger.info(`Paddle (${PADDLE.env}) webhook ${event.event_type} (${event.event_id}) - portal ${portalId || 'unknown'}, ${event.data?.id}`);
-  console.log('[paddleController.js]', JSON.stringify(event));
+  const tag = `Paddle (${PADDLE.env}) ${event.event_type} ${event.event_id}`;
+
+  // Paddle sends ~12 events per checkout; only these change our data. Everything
+  // else gets one short line - unsubscribe from it in Paddle to stop the traffic.
+  if (!HANDLED_EVENTS.has(event.event_type)) {
+    console.log('[paddleController.js]', `${tag} - ignored`);
+    return res.status(200).json({ received: true });
+  }
 
   try {
-    switch (event.event_type) {
-      case 'subscription.created':
-      case 'subscription.activated':
-      case 'subscription.updated': // plan change / resume / scheduled cancel from the portal
-      case 'subscription.past_due':
-      case 'subscription.canceled':
-        if (!portalId) {
-          console.log('[paddleController.js]', `${event.event_type} ${event.data?.id} has no custom_data.portal_id - not created via /paddle/checkout?`);
-          break;
-        }
-        await applyEvent(portalId, occurredAt, subscriptionUpdate(event));
-        break;
-
-      case 'transaction.payment_failed': {
-        // A failed first checkout payment has no subscription yet - nothing to flag.
-        if (!event.data?.subscription_id) break;
+    let result = null;
+    if (event.event_type === 'transaction.payment_failed') {
+      // A failed first checkout payment has no subscription yet - nothing to flag.
+      if (event.data?.subscription_id) {
         const record = portalId
           ? { portalId }
           : await subscriptionModel.findOne({ paddleSubscriptionId: event.data.subscription_id });
-        if (record) await applyEvent(record.portalId, occurredAt, { status: 'past_due' });
-        break;
+        if (record) result = await applyEvent(record.portalId, occurredAt, { status: 'past_due' });
       }
-
-      default:
-        console.log('[paddleController.js]', `Ignoring ${event.event_type}`);
+    } else if (portalId) {
+      result = await applyEvent(portalId, occurredAt, subscriptionUpdate(event));
     }
+
+    if (result)
+      logger.info(`${tag} - portal ${result.portalId} -> plan ${result.plan}, status ${result.status}, sub ${result.paddleSubscriptionId}`);
+    else
+      console.log('[paddleController.js]', `${tag} - no change (portal ${portalId || 'missing custom_data.portal_id'}, ${event.data?.id})`);
   } catch (err) {
-    console.log('[paddleController.js]', `Webhook ${event.event_type} (${event.event_id}) processing failed: ${err.message}`);
+    console.log('[paddleController.js]', `${tag} - processing failed: ${err.message}`);
   }
 
   return res.status(200).json({ received: true });

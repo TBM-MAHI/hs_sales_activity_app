@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy | Activity Tracking Tool for HubSpot | TwinkleFlow</title>
+  <meta name="description" content="How the Contact-company Activity Tracking Tool for HubSpot collects, uses and protects data.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/png" href="/contact-activity-track-logo.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="nav-wrap">
+  <nav class="nav" aria-label="Main">
+    <a class="brand" href="/"><img class="brand-logo" src="/contact-activity-track-logo.png" alt="" width="36" height="36"><span class="brand-text">Activity Tracker</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#faq">FAQ</a>
+    </div>
+    <a class="btn btn-primary" href="/oauth/install">Install free</a>
+  </nav>
+</header>
+
+<main>
+  <section class="legal-hero">
+    <div class="container narrow">
+      <span class="label">Legal</span>
+      <h1>Privacy Policy</h1>
+      <p>Last updated: October 19, 2026</p>
+    </div>
+  </section>
+
+  <section class="legal">
+    <div class="container narrow">
+      <p>This Privacy Policy explains how TwinkleFlow ("<strong>TwinkleFlow</strong>", "<strong>we</strong>", "<strong>us</strong>") collects, uses, shares and protects information in connection with the <strong>Contact-company Activity Tracking Tool</strong> (the "<strong>App</strong>"), a HubSpot Marketplace app, and this website at hs-sales-app-2026.onrender.com (the "<strong>Site</strong>").</p>
+
+      <div class="callout">In short: the App reads activity records from your HubSpot account only while a workflow action runs, writes the result back to a property on the same record, and does not store your CRM records in our database. We keep only what we need to run your account: your portal ID, access tokens, basic account details, plan and monthly usage. We do not sell data.</div>
+
+      <nav class="toc" aria-label="Contents">
+        <ol>
+          <li><a href="#who-we-are">Who we are</a></li>
+          <li><a href="#roles">Our role</a></li>
+          <li><a href="#access">HubSpot permissions</a></li>
+          <li><a href="#collect">Information we collect</a></li>
+          <li><a href="#use">How we use information</a></li>
+          <li><a href="#legal-bases">Legal bases</a></li>
+          <li><a href="#sharing">Sharing and sub-processors</a></li>
+          <li><a href="#payments">Payments</a></li>
+          <li><a href="#cookies">Cookies</a></li>
+          <li><a href="#retention">Data retention</a></li>
+          <li><a href="#security">Security</a></li>
+          <li><a href="#transfers">International transfers</a></li>
+          <li><a href="#rights">Your rights</a></li>
+          <li><a href="#children">Children</a></li>
+          <li><a href="#changes">Changes to this policy</a></li>
+          <li><a href="#contact">Contact us</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="who-we-are">1. Who we are</h2>
+      <p>TwinkleFlow is a HubSpot consultancy that builds and operates HubSpot Marketplace apps, including this App. The App adds a custom workflow action to HubSpot that analyzes the activities (calls, emails, meetings, notes and tasks) associated with a contact or company and writes one of the following results to a property you choose: most recent activity type, most frequent activity type, last meeting date, last call date or last call outcome.</p>
+
+      <h2 id="roles">2. Our role</h2>
+      <ul>
+        <li><strong>CRM data in your HubSpot account</strong> (contacts, companies and their activities): you, the HubSpot customer, are the controller. TwinkleFlow processes this data only as a <strong>processor</strong>, on your behalf and to provide the App's functionality you configure.</li>
+        <li><strong>Account, billing and Site data</strong> (such as the email of the person who installed the App, your plan and usage): TwinkleFlow is the <strong>controller</strong>.</li>
+      </ul>
+
+      <h2 id="access">3. HubSpot permissions the App requests</h2>
+      <p>When you install the App you authorize it through HubSpot OAuth. The App requests only the scopes it needs:</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Scope</th><th>Why the App needs it</th></tr></thead>
+          <tbody>
+            <tr><td>crm.objects.contacts.read / .write</td><td>Confirm the enrolled contact exists and write the result to the property you selected.</td></tr>
+            <tr><td>crm.objects.companies.read / .write</td><td>The same, for companies.</td></tr>
+            <tr><td>crm.schemas.contacts.read / .write<br>crm.schemas.companies.read / .write</td><td>Create the App's property group and five properties at install, and list your text properties as targets in the action.</td></tr>
+            <tr><td>sales-email-read</td><td>Read the direction (sent or received) and date of logged emails to determine activity types.</td></tr>
+            <tr><td>oauth</td><td>Standard HubSpot OAuth connection.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="collect">4. Information we collect</h2>
+      <h3>4.1 Installation and account information</h3>
+      <ul>
+        <li>Your HubSpot portal (hub) ID, hub domain, account type and account time zone.</li>
+        <li>The email address of the HubSpot user who installed the App.</li>
+        <li>OAuth access and refresh tokens issued by HubSpot.</li>
+      </ul>
+
+      <h3>4.2 CRM data processed while the action runs</h3>
+      <p>When a workflow enrolls a contact or company in the App's action, the App receives the record's ID and type and the options you chose, and reads from HubSpot the activities associated with that record, limited to these fields:</p>
+      <ul>
+        <li><strong>Calls:</strong> created date, timestamp, title and outcome (disposition). The App may also read your portal's list of call outcome labels.</li>
+        <li><strong>Emails:</strong> created date, timestamp, direction and subject line. The App does not read email bodies.</li>
+        <li><strong>Meetings:</strong> created date, timestamp, start time and title.</li>
+        <li><strong>Notes and tasks:</strong> created date and timestamp only. The App does not read note or task content.</li>
+      </ul>
+      <p>This data is used only to compute the result. It is held in server memory in a short-lived cache (up to 5 minutes) so that repeated runs on the same record do not query HubSpot again, and it is <strong>not written to our database</strong>. The result (for example "Meeting" or "10/14/2026") is written back to the property you selected on the same record in your HubSpot account.</p>
+
+      <h3>4.3 Usage and subscription information</h3>
+      <ul>
+        <li>Your plan, subscription status and the number of records processed in the current calendar month.</li>
+        <li>Paddle customer and subscription identifiers and your current billing period end date (see <a href="#payments">Payments</a>).</li>
+      </ul>
+
+      <h3>4.4 Technical logs</h3>
+      <p>Our servers keep operational logs for troubleshooting and security. These may include timestamps, request paths, IP addresses, portal IDs, record IDs, the action options selected, and error messages from HubSpot. Logs may occasionally contain activity metadata described in 4.2.</p>
+
+      <h3>4.5 Information you send us</h3>
+      <p>If you email support, we receive your name, email address and whatever you include in your message.</p>
+
+      <h2 id="use">5. How we use information</h2>
+      <ul>
+        <li>To provide the App: authenticate with HubSpot, refresh tokens, create the App's properties, run the workflow action and write results.</li>
+        <li>To enforce plan limits, count monthly usage and reset it each month.</li>
+        <li>To process subscriptions, upgrades, cancellations and refunds with Paddle.</li>
+        <li>To keep a record of installations in TwinkleFlow's own CRM (installer email, a first name derived from that email, the country inferred from your account time zone and your hub domain), so that we can provide support and send service-related messages such as important changes or billing notices.</li>
+        <li>To troubleshoot errors, secure the App and prevent abuse.</li>
+        <li>To comply with legal, tax and accounting obligations.</li>
+      </ul>
+      <p>We do not use your CRM data for advertising, we do not sell or rent it, and we do not use it to train AI models.</p>
+
+      <h2 id="legal-bases">6. Legal bases (EEA, UK and similar laws)</h2>
+      <ul>
+        <li><strong>Contract:</strong> to provide the App and your subscription.</li>
+        <li><strong>Legitimate interests:</strong> to secure and improve the App, keep installation records and provide support.</li>
+        <li><strong>Legal obligation:</strong> tax, accounting and lawful requests.</li>
+        <li><strong>Consent:</strong> for any optional marketing communications, which you can withdraw at any time.</li>
+      </ul>
+
+      <h2 id="sharing">7. Sharing and sub-processors</h2>
+      <p>We share information only with the service providers that help us run the App, under contracts that require them to protect it:</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Provider</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td>HubSpot, Inc.</td><td>Source and destination of your CRM data; also hosts TwinkleFlow's own CRM for installation records.</td></tr>
+            <tr><td>Render Services, Inc.</td><td>Application hosting and server logs.</td></tr>
+            <tr><td>MongoDB, Inc. (MongoDB Atlas)</td><td>Database for account, token, plan and usage information.</td></tr>
+            <tr><td>Paddle.com Market Limited and affiliates</td><td>Checkout, payment processing, invoicing, tax and subscription management (Merchant of Record).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>We may also disclose information to professional advisers, when required by law or to protect rights and safety, or to a successor in a merger, acquisition or sale of assets, subject to this policy.</p>
+
+      <h2 id="payments">8. Payments</h2>
+      <p>Paid plans are sold through Paddle, which acts as our Merchant of Record. When you buy a plan, Paddle collects your name, email, billing address, tax details and payment information and processes them under <a href="https://www.paddle.com/legal/privacy" rel="noopener">Paddle's Privacy Policy</a>. We never see or store your full card details. Paddle shares with us your customer ID, subscription ID, plan, subscription status, billing period and payment status so that we can activate your plan.</p>
+
+      <h2 id="cookies">9. Cookies</h2>
+      <p>This Site does not use analytics, advertising or tracking cookies. The checkout page loads Paddle.js, and Paddle may set cookies that are strictly necessary for secure checkout and fraud prevention. Our install flow uses a short-lived session cookie during the HubSpot authorization step.</p>
+
+      <h2 id="retention">10. Data retention</h2>
+      <ul>
+        <li><strong>CRM activity data:</strong> held in memory for no more than 5 minutes; not stored in our database.</li>
+        <li><strong>Account, token, plan and usage data:</strong> kept while the App is installed. When you uninstall the App, HubSpot revokes its access and our stored tokens stop working. You can ask us to delete all stored data for your portal at any time; we complete such requests within 30 days.</li>
+        <li><strong>Server logs:</strong> kept for a limited period according to our hosting provider's log retention, then deleted.</li>
+        <li><strong>Billing records:</strong> kept as long as required by tax and accounting laws.</li>
+      </ul>
+
+      <h2 id="security">11. Security</h2>
+      <p>All traffic between HubSpot, Paddle, your browser and our servers is encrypted in transit with TLS. Requests from HubSpot's settings page are verified with HubSpot's request signatures, and Paddle webhooks are verified with Paddle's signatures. Database access is restricted to the App's service credentials, and credentials are kept out of source code. No system is completely secure, but we work to protect your information and will notify affected customers of a breach as required by law.</p>
+
+      <h2 id="transfers">12. International transfers</h2>
+      <p>Our providers may process data in the United States and other countries. Where required, transfers are protected by appropriate safeguards such as the European Commission's Standard Contractual Clauses.</p>
+
+      <h2 id="rights">13. Your rights</h2>
+      <p>Depending on where you live, you may have the right to access, correct, delete, restrict or object to processing of your personal data, to data portability, and to withdraw consent. California residents may request to know and delete personal information and will not be discriminated against for doing so; we do not sell or share personal information for cross-context behavioral advertising.</p>
+      <p>To exercise these rights, email <a href="mailto:support@twinkleflow.com">support@twinkleflow.com</a>. For personal data about your own contacts stored in HubSpot, please contact the HubSpot customer that controls it; we will assist them as their processor. You may also complain to your local data protection authority.</p>
+
+      <h2 id="children">14. Children</h2>
+      <p>The App and Site are for businesses and are not directed at children under 16. We do not knowingly collect children's personal data.</p>
+
+      <h2 id="changes">15. Changes to this policy</h2>
+      <p>We may update this policy as the App changes. We will update the "Last updated" date above and, for material changes, notify the installer's email address before the change takes effect.</p>
+
+      <h2 id="contact">16. Contact us</h2>
+      <p>Questions about privacy or this policy: <a href="mailto:support@twinkleflow.com">support@twinkleflow.com</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <a class="brand" href="/"><img class="brand-logo" src="/contact-activity-track-logo.png" alt="" width="36" height="36">Activity Tracker</a>
+        <p>The Contact-company Activity Tracking Tool is a HubSpot Marketplace app built and operated by TwinkleFlow.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul>
+          <li><a href="/#features">Features</a></li>
+          <li><a href="/#pricing">Pricing</a></li>
+          <li><a href="/#faq">FAQ</a></li>
+          <li><a href="https://twinkleflow.com/contact-activity-tracker-install-guide">Install guide</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Legal &amp; support</h4>
+        <ul>
+          <li><a href="/terms-and-conditions">Terms &amp; Conditions</a></li>
+          <li><a href="/privacy-policy" aria-current="page">Privacy Policy</a></li>
+          <li><a href="/refund-policy">Refund Policy</a></li>
+          <li><a href="mailto:support@twinkleflow.com">support@twinkleflow.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 TwinkleFlow. All rights reserved.</span>
+      <span>HubSpot is a trademark of HubSpot, Inc. This app is not made by HubSpot.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

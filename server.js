@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const hubspot_oAuthRoutes = require('./routes/oAuthRoutes');
@@ -19,6 +20,11 @@ app.use('/paddle/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 // Use CORS middleware
 app.use(cors());
+// Public site (home/pricing, privacy, terms, refund) - required for Paddle
+// domain approval. Before the session middleware so page views set no cookie;
+// extensions lets /privacy-policy serve privacy-policy.html.
+app.get('/pricing', (req, res) => res.redirect(301, '/#pricing'));
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 app.use(session({
     secret: Math.random().toString(36).substring(2),
     resave: false,
