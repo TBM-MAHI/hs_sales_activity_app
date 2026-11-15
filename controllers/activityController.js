@@ -79,6 +79,12 @@ async function handleActionInput(req, res) {
   } catch (err) {
     console.log('[activityController.js]', err);
    // logger.error(`Workflow error: ${err.message}`);
+
+    // Search rate limit: a 429 with Retry-After makes HubSpot back off and
+    // retry this action later instead of failing the enrollment.
+    if (err.status === 429) {
+      res.set('Retry-After', String(err.retryAfter || 10));
+    }
     return res.status(
       err.status || 500).json({ activityTypeValue: null, updateSuccess: false, errorMessage: err.message }
         

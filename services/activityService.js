@@ -1,6 +1,7 @@
 // services/activity.service.js
 const axios = require('axios');
 const logger = require('../utils/logger');
+const searchLimiter = require('../utils/searchRateLimiter');
 
 const HUBSPOT_BASE = 'https://api.hubapi.com/crm/v3';
 
@@ -54,9 +55,6 @@ const DEFAULT_CALL_DISPOSITIONS = {
   '17b47fee-58de-441e-a44c-c6300d46f273': 'Wrong number',
 };
 
-// Rate limit: 5 req/sec - use 250ms delay for safety
-const RATE_LIMIT_DELAY = 250;
-
 // Cache (5 min TTL)
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
@@ -73,10 +71,10 @@ function setCache(key, data) {
 /**
  * Recursively fetch all emails with pagination and split by direction
  */
-async function fetchAllEmailsPaginated(assocType, objectId, accessToken, after = undefined, accumulated = { sent: [], received: [] }) {
-  const response = await hubspotPost(
+async function fetchAllEmailsPaginated(assocType, objectId, ctx, after = undefined, accumulated = { sent: [], received: [] }) {
+  const response = await hubspotSearch(
     `${HUBSPOT_BASE}/objects/emails/search`,
-    accessToken,
+    ctx,
     {
       limit: 200,
       after,
@@ -111,8 +109,7 @@ async function fetchAllEmailsPaginated(assocType, objectId, accessToken, after =
   const nextAfter = response.paging?.next?.after;
 
   if (nextAfter) {
-    await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY)); // Rate limit
-    return fetchAllEmailsPaginated(assocType, objectId, accessToken, nextAfter, accumulated); // Recurse
+    return fetchAllEmailsPaginated(assocType, objectId, ctx, nextAfter, accumulated); // Recurse (each page waits for its own search slot)
   }
   return accumulated; // Done - return final result
 }
@@ -153,6 +150,36 @@ async function hubspotPost(url, accessToken, data) {
         continue;
       }
       throw { status: err.response?.status || 500, message: err.response?.data?.message || err.message };
+    }
+  }
+}
+
+/**
+ * POST to a CRM search endpoint. Search is limited to 5 req/sec per portal
+ * across all concurrent requests, so every attempt first takes a slot from the
+ * portal's shared queue (utils/searchRateLimiter.js). A queue that is too long
+ * throws a 429 straight away so the workflow action can be retried by HubSpot.
+ */
+async function hubspotSearch(url, { portalId, accessToken }, data) {
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await searchLimiter.acquireSearchSlot(portalId);
+    console.log('[activityService.js]', `SEARCH -> ${url} (attempt ${attempt})`);
+    try {
+      const res = await axios.post(url, data, { headers: authHeaders(accessToken), timeout: 20000 });
+      return res.data;
+    } catch (err) {
+      const status = err.response?.status;
+      console.log('[activityService.js]', `SEARCH ${url} failed: ${status} ${JSON.stringify(err.response?.data)}`);
+      if (status === 429) {
+        // Back off the whole portal, not just this request - every queued
+        // search would hit the same limit.
+        const retryAfterMs = (Number(err.response?.headers?.['retry-after']) || 1) * 1000;
+        searchLimiter.penalize(portalId, retryAfterMs);
+        if (attempt < MAX_ATTEMPTS) continue;
+        throw searchLimiter.rateLimitError(retryAfterMs);
+      }
+      throw { status: status || 500, message: err.response?.data?.message || err.message };
     }
   }
 }
@@ -199,7 +226,7 @@ async function fetchAllEngagements(objectType, objectId, whichFunction, { portal
       try {
         if (engagementType === 'emails') {
           // Use recursive pagination for emails
-          const emails = await fetchAllEmailsPaginated(assocType, objectId, accessToken);
+          const emails = await fetchAllEmailsPaginated(assocType, objectId, { portalId, accessToken });
 
           entry.results.emails_sent = emails.sent;
           entry.results.emails_received = emails.received;
@@ -208,9 +235,9 @@ async function fetchAllEngagements(objectType, objectId, whichFunction, { portal
 
           console.log('[activityService.js]', `Total: ${emails.sent.length} emails_sent, ${emails.received.length} emails_received`);
         } else {
-          const response = await hubspotPost(
+          const response = await hubspotSearch(
             `${HUBSPOT_BASE}/objects/${engagementType}/search`,
-            accessToken,
+            { portalId, accessToken },
             {
               limit: 200,
               properties: ENGAGEMENT_PROPERTIES[engagementType] || ['hs_createdate'],
@@ -234,11 +261,13 @@ async function fetchAllEngagements(objectType, objectId, whichFunction, { portal
         // Failed searches are not cached, so the next request retries them.
         setCache(cacheKey, entry);
       } catch (err) {
+        // Rate limited: fail the whole request so HubSpot retries the action.
+        // Treating it as "no records" would write a wrong answer to the record.
+        // Types fetched before this point are cached, so the retry reuses them.
+        if (err.status === 429) throw err;
         console.log('[activityService.js]', `Failed to fetch ${engagementType}: ${err.message}`);
         entry.results[engagementType] = [];
       }
-      // Rate limit delay - only needed after a real HubSpot call
-      await new Promise(r => setTimeout(r, RATE_LIMIT_DELAY));
     }
 
     Object.assign(engagement_results, entry.results);
