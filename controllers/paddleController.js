@@ -30,8 +30,59 @@ async function paddleRequest(method, path, body) {
   return json.data;
 }
 
+// Statuses where the portal still has a live Paddle subscription to change or cancel.
+const LIVE_STATUSES = ['active', 'trialing', 'past_due'];
+
+function hasLiveSubscription(subscription) {
+  return Boolean(subscription.paddleSubscriptionId) && LIVE_STATUSES.includes(subscription.status);
+}
+
+/* Scheduled cancel date from a Paddle subscription object, or null. */
+function scheduledCancelAt(data) {
+  return data?.scheduled_change?.action === 'cancel' ? new Date(data.scheduled_change.effective_at) : null;
+}
+
+/**
+ * Save a subscription object Paddle returned from our own API call, so the UI
+ * is right immediately instead of waiting for the webhook. Stamped with the
+ * subscription's updated_at so the matching webhook still applies and older
+ * ones do not.
+ */
+async function saveFromApiResponse(portalId, data) {
+  const at = new Date(data.updated_at || Date.now());
+  return applyEvent(portalId, at, subscriptionUpdate({ data }));
+}
+
+/**
+ * Change the plan of an existing subscription in place (no second checkout,
+ * so the portal is never billed twice). Prorated and charged/credited now;
+ * if the charge fails Paddle keeps the old plan.
+ */
+async function changePlan(req, res, subscription, plan) {
+  const portalId = subscription.portalId;
+  if (subscription.plan === plan)
+    return res.status(400).json({ error: `Already on the ${plan} plan` });
+
+  // A plan change means they are staying - drop any pending cancellation first.
+  if (subscription.scheduledCancelAt)
+    await paddleRequest('PATCH', `/subscriptions/${subscription.paddleSubscriptionId}`, { scheduled_change: null });
+
+  const data = await paddleRequest('PATCH', `/subscriptions/${subscription.paddleSubscriptionId}`, {
+    items: [{ price_id: PRICE_IDS[plan], quantity: 1 }],
+    proration_billing_mode: 'prorated_immediately',
+    on_payment_failure: 'prevent_change',
+  });
+
+  const saved = await saveFromApiResponse(portalId, data);
+  logger.info(`Paddle (${PADDLE.env}) plan change for portal ${portalId}: ${subscription.plan} -> ${plan}, sub ${data.id}`);
+  return res.status(200).json({ updated: true, plan: saved?.plan || plan, status: data.status });
+}
+
 /**
  * POST /paddle/checkout  body: { plan }
+ * No live subscription -> returns { checkoutUrl } for a new Paddle checkout.
+ * Live subscription    -> changes its plan in place and returns { updated: true, plan }.
+ *
  * Paddle Billing has no "checkout session" object: a checkout is a draft
  * transaction, and data.checkout.url opens it on the default payment link set
  * in Paddle > Checkout > Checkout settings (here: /paddle/pay).
@@ -52,10 +103,8 @@ async function createCheckout(req, res) {
   try {
     const subscription = await subscriptionService.getOrCreateByPortalId(portalId);
 
-    // An existing paid subscription is changed in the customer portal - a
-    // second checkout would bill the portal twice.
-    if (subscription.paddleSubscriptionId && ['active', 'trialing', 'past_due'].includes(subscription.status))
-      return res.status(409).json({ error: 'This portal already has a paid subscription - use the customer portal to change plan', portalUrlEndpoint: '/paddle/portal' });
+    if (hasLiveSubscription(subscription))
+      return await changePlan(req, res, subscription, plan);
 
     const transaction = await paddleRequest('POST', '/transactions', {
       items: [{ price_id: PRICE_IDS[plan], quantity: 1 }],
@@ -83,6 +132,7 @@ function subscriptionUpdate(event) {
     paddleCustomerId: data.customer_id,
     status: data.status,
     currentPeriodEnd: data.current_billing_period?.ends_at || null,
+    scheduledCancelAt: scheduledCancelAt(data),
   };
   const plan = planForPriceId(data.items?.[0]?.price?.id);
   if (plan) update.plan = plan;
@@ -229,14 +279,87 @@ async function getCurrentPlan(req, res) {
       priceUsd: (PLANS[subscription.plan] || PLANS[DEFAULT_PLAN]).priceUsd,
       usageCount: subscription.usageCount,
       limit,
-      remaining: limit === null ? null : Math.max(limit - subscription.usageCount, 0),
+      remaining: Math.max(limit - subscription.usageCount, 0),
       nextResetDate: subscription.periodEnd,
       currentPeriodEnd: subscription.currentPeriodEnd || null,
+      cancelAt: subscription.scheduledCancelAt || null,
       hasPaddleSubscription: Boolean(subscription.paddleSubscriptionId),
     });
   } catch (err) {
     console.log('[paddleController.js]', `plan lookup failed for portal ${portalId}: ${err.message}`);
     return res.status(500).json({ error: 'Could not load plan' });
+  }
+}
+
+/**
+ * GET /paddle/plans?portalId= - everything the upgrade modal needs: the
+ * current plan and every plan it can show, flagged with which one is current.
+ * Plans are chosen by name ({ plan: 'growth' } to /checkout); price IDs stay
+ * on the server.
+ */
+async function getPlans(req, res) {
+  const portalId = req.query.portalId;
+  if (!portalId)
+    return res.status(400).json({ error: 'Missing portalId' });
+
+  try {
+    let subscription = await subscriptionService.getOrCreateByPortalId(portalId);
+    subscription = await subscriptionService.resetIfPeriodExpired(subscription);
+
+    return res.status(200).json({
+      current: {
+        plan: subscription.plan,
+        status: subscription.status,
+        usageCount: subscription.usageCount,
+        limit: subscriptionService.getLimitForPlan(subscription.plan),
+        currentPeriodEnd: subscription.currentPeriodEnd || null,
+        cancelAt: subscription.scheduledCancelAt || null,
+        hasPaddleSubscription: hasLiveSubscription(subscription),
+      },
+      available: Object.entries(PLANS).map(([plan, { priceUsd }]) => ({
+        plan,
+        priceUsd,
+        limit: subscriptionService.getLimitForPlan(plan),
+        isCurrent: plan === subscription.plan,
+        // 'free' is not bought - a paid portal gets there by cancelling.
+        purchasable: Boolean(PRICE_IDS[plan]),
+      })),
+    });
+  } catch (err) {
+    console.log('[paddleController.js]', `plans lookup failed for portal ${portalId}: ${err.message}`);
+    return res.status(500).json({ error: 'Could not load plans' });
+  }
+}
+
+/**
+ * POST /paddle/cancel - cancel at the end of the paid period. The portal keeps
+ * its plan until then; subscription.canceled drops it to free at that point.
+ * The subscription ID comes from our database, never from the request.
+ */
+async function cancelSubscription(req, res) {
+  const portalId = req.query.portalId;
+  if (!portalId)
+    return res.status(400).json({ error: 'Missing portalId' });
+
+  try {
+    const subscription = await subscriptionModel.findOne({ portalId: String(portalId) });
+    if (!subscription || !hasLiveSubscription(subscription))
+      return res.status(404).json({ error: 'No active paid subscription for this portal' });
+
+    if (subscription.scheduledCancelAt)
+      return res.status(200).json({ canceled: true, cancelAt: subscription.scheduledCancelAt, alreadyScheduled: true });
+
+    const data = await paddleRequest('POST', `/subscriptions/${subscription.paddleSubscriptionId}/cancel`, {
+      effective_from: 'next_billing_period',
+    });
+    await saveFromApiResponse(portalId, data);
+
+    const cancelAt = scheduledCancelAt(data);
+    logger.info(`Paddle (${PADDLE.env}) cancel scheduled for portal ${portalId}, sub ${data.id}, effective ${cancelAt?.toISOString() || 'now'}`);
+    return res.status(200).json({ canceled: true, cancelAt, status: data.status });
+  } catch (err) {
+    console.log('[paddleController.js]', `cancel failed for portal ${portalId}: ${err.message}`);
+    return res.status(err.status || 500).json({ error: err.message || 'Could not cancel subscription' });
   }
 }
 
@@ -265,4 +388,4 @@ function payPage(req, res) {
 </script></body></html>`);
 }
 
-module.exports = { createCheckout, handleWebhook, getCustomerPortal, getCurrentPlan, payPage };
+module.exports = { createCheckout, handleWebhook, getCustomerPortal, getCurrentPlan, getPlans, cancelSubscription, payPage };

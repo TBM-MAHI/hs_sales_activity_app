@@ -48,6 +48,12 @@ let subscriptionSchema = new mongoose.Schema({
     currentPeriodEnd: {
         type: Date
     },
+    // Set while a cancellation is scheduled (Paddle scheduled_change.action
+    // 'cancel'); the plan stays paid until then. Null otherwise.
+    scheduledCancelAt: {
+        type: Date,
+        default: null
+    },
     // occurred_at of the last Paddle event applied - Paddle does not guarantee
     // delivery order, so older events are ignored.
     paddleLastEventAt: {

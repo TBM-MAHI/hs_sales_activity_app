@@ -5,14 +5,6 @@ let propertyController = require('../controllers/propertyController');
 let activityController = require('../controllers/activityController');
 const { checkUsageLimit } = require('../middleware/usageLimit');
 
-const randomDelay = () => {
-    const min = 5000;
-    const max = 10000;
-    const delay = Math.floor(Math.random() * (max - min + 1)) + min;
-    console.log('[activityRoute.js]', "delay - ",delay);
-    return new Promise(resolve => setTimeout(resolve, delay));
-};
-
 api_Router.post('/test', async (req, res) => {
     console.log('[activityRoute.js]', `calling route-> property/test`);
     return res.status(200).json(req.body);
@@ -30,7 +22,7 @@ api_Router.post('/getallprops', async (req, res) => {
 //hubspot activity route
 api_Router.post('/getactivityresult', checkUsageLimit, async (req, res) => {
   logger.info('calling route -> activity/getactivityresult');
-  console.log('[activityRoute.js]',  '\t Request body:',req.body)
+ // console.log('[activityRoute.js]',  '\t Request body:',req.body)
   await activityController.handleActionInput(req, res);
 });
 

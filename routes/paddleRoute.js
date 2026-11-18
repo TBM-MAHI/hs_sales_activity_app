@@ -15,5 +15,7 @@ router.get('/pay', paddleController.payPage);
 router.post('/checkout', validateHubSpotSignature, paddleController.createCheckout);
 router.get('/portal', validateHubSpotSignature, paddleController.getCustomerPortal);
 router.get('/plan', validateHubSpotSignature, paddleController.getCurrentPlan);
+router.get('/plans', validateHubSpotSignature, paddleController.getPlans);
+router.post('/cancel', validateHubSpotSignature, paddleController.cancelSubscription);
 
 module.exports = router;

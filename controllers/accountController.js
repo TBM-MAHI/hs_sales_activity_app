@@ -16,7 +16,6 @@ async function getAccountInfo(req, res) {
     subscription = await subscriptionService.resetIfPeriodExpired(subscription);
     const details = await fetchAccountDetails(portalId);
 
-    // null for unlimited - never Infinity, it serializes to null anyway.
     const limit = subscriptionService.getLimitForPlan(subscription.plan);
 
     return res.status(200).json({
@@ -27,7 +26,7 @@ async function getAccountInfo(req, res) {
       status: subscription.status,
       usageCount: subscription.usageCount,
       limit,
-      remaining: limit === null ? null : Math.max(limit - subscription.usageCount, 0),
+      remaining: Math.max(limit - subscription.usageCount, 0),
       periodStart: subscription.periodStart,
       nextResetDate: subscription.periodEnd
     });

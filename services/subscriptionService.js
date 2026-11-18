@@ -54,9 +54,8 @@ async function resetIfPeriodExpired(record) {
     return updated || subscriptionModel.findOne({ portalId: record.portalId });
 }
 
-/* Numeric monthly limit for a plan; null for 'unlimited'. */
+/* Numeric monthly limit for a plan ('unlimited' reports 100,000,000 but is never enforced). */
 function getLimitForPlan(plan) {
-    if (plan === UNLIMITED_PLAN) return null;
     return (PLANS[plan] || PLANS[DEFAULT_PLAN]).limit;
 }
 
